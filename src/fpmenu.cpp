@@ -84,6 +84,18 @@ static const Item kMonsters[] = {
 	A("Chainsaw boss", "fp_spawn monster_bosschainsaw"), A("Doctor boss", "fp_spawn monster_doctorboss"),
 	A("Sewer boss", "fp_spawn monster_sewerboss"), A("Roof boss", "fp_spawn monster_roofboss"),
 };
+// Cry of Fear's own costumes, worn without unlocking them: the same "setclothes"
+// command the game's wardrobe menu sends (numbers in the game's unlock order).
+static const Item kClothes[] = {
+	A("Simon's normal clothes", "setclothes 0"),
+	A("David Leatherhoff suit", "setclothes 1"), A("ModDB hoodie", "setclothes 2"),
+	A("Hello Kitty suit", "setclothes 3"), A("Afraid of Monsters suit", "setclothes 4"),
+	A("Camouflage hoodie", "setclothes 5"), A("Half-Life Creations hoodie", "setclothes 6"),
+	A("Black Metal suit", "setclothes 7"), A("Team Psykskallar hoodie", "setclothes 8"),
+	A("Fuck Anime suit", "setclothes 9"), A("Sick Simon suit", "setclothes 10"),
+	A("AoM Twitcher suit", "setclothes 11"),
+	A("Your own hoodie (models\\costumes\\custom_hoodie.tga)", "setclothes 12 custom_hoodie.tga"),
+};
 // Original engine: this mod's server wrapper (hl.dll).
 static const Item kCheatsGoldSrc[] = {
 	A("God mode (on/off)", "fp_god"), A("Noclip (on/off)", "fp_noclip"),
@@ -158,7 +170,7 @@ struct Page { const char *id; const char *title; const Item *items; int count; c
 #define PAGE(id, title, arr, parent) { id, title, arr, (int)(sizeof(arr) / sizeof(arr[0])), parent }
 static const Item kMain[] = {
 	O("Weapons", "weapons"), O("Ammo", "ammo"), O("Items", "items"), O("Monsters", "monsters"),
-	O("Cheats", "cheats"), O("Settings", "settings"),
+	O("Clothes", "clothes"), O("Cheats", "cheats"), O("Settings", "settings"),
 };
 static const Page kPages[] = {
 	PAGE("main", "SPAWN MENU", kMain, NULL),
@@ -166,6 +178,7 @@ static const Page kPages[] = {
 	PAGE("ammo", "Ammo", kAmmo, "main"),
 	PAGE("items", "Items", kItems, "main"),
 	PAGE("monsters", "Monsters", kMonsters, "main"),
+	PAGE("clothes", "Clothes", kClothes, "main"),
 	PAGE("cheats", "Cheats", kCheatsGoldSrc, "main"),
 	PAGE("settings", "Settings", kSettings, "main"),
 	PAGE("graphics", "Graphics", kGraphics, "settings"),
