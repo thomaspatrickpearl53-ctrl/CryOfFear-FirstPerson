@@ -117,6 +117,9 @@ struct gl_surface_t
 // ---------------------------------------------------------------------------
 
 static cvar_t *fl_enable, *fl_bright, *fl_range, *fl_fov, *fl_sway, *fl_color, *fl_models;
+static cvar_t *fl_dust, *fl_aniso;
+static float  s_eye[3], s_vright[3], s_vup[3];   // camera, for the dust billboards
+static int    s_mapFrames;      // frames since the map loaded (texture filtering runs at set points)
 
 static bool   s_on;             // flashlight switched on
 static bool   s_engineFlash;    // EF_DIMLIGHT seen on the local player
@@ -139,6 +142,8 @@ void FpLight_Init(void)
 	fl_sway   = FpRegister("cl_fplight_sway", "1", FCVAR_ARCHIVE);
 	fl_color  = FpRegister("cl_fplight_color", "1 0.94 0.82", FCVAR_ARCHIVE);
 	fl_models = FpRegister("cl_fplight_models", "1", FCVAR_ARCHIVE);
+	fl_dust   = FpRegister("cl_pp_dust", "1", FCVAR_ARCHIVE);          // dust specks in the flashlight beam
+	fl_aniso  = FpRegister("cl_pp_aniso", "16", FCVAR_ARCHIVE);        // anisotropic filtering (0 = off)
 }
 
 static bool Replacing(void) { return fl_enable && fl_enable->value != 0.0f; }
@@ -151,6 +156,7 @@ void FpLight_NewMap(void)
 	s_layoutOk = false;
 	s_engineFlash = false;
 	s_haveDir = false;
+	s_mapFrames = 0;    // texture filtering is applied shortly after the map loads, and again later
 }
 
 // Light position/direction in world space for the volumetric beam. Returns the fade amount.
@@ -231,6 +237,9 @@ void FpLight_Update(ref_params_t *pp)
 	for (int i = 0; i < 3; i++)
 		s_pos[i] = pp->vieworg[i] + pp->right[i] * 6.0f - pp->up[i] * 7.0f + pp->forward[i] * 2.0f;
 	s_haveDir = true;
+	VectorCopy(pp->vieworg, s_eye);
+	VectorCopy(pp->right, s_vright);
+	VectorCopy(pp->up, s_vup);
 
 	if (!Replacing() || s_amount < 0.01f || !fl_models || fl_models->value == 0.0f)
 		return;
@@ -586,6 +595,205 @@ void FpLight_DrawWorld(void)
 		s_layoutOk = false;
 		FpLog("fplight: error while drawing - projected light off for this map\n");
 	}
+
+	FpGL_Use((GLuint)prevProg);
+	glPopAttrib();
+}
+
+// ---------------------------------------------------------------------------
+// Dust in the beam: specks floating in a box around the camera, drawn as small
+// additive billboards in the 3D pass (depth-tested), lit only inside the beam.
+// ---------------------------------------------------------------------------
+
+#define DUST_COUNT 600
+#define DUST_BOX   360.0f      // side of the cube around the camera that holds the dust
+
+struct Mote { float pos[3], vel[3], phase, size; };
+static Mote   s_motes[DUST_COUNT];
+static bool   s_motesInit;
+static GLuint s_dotTex;
+static float  s_dustLast = -1.0f;
+
+static float Rand01(unsigned int &r) { r = r * 1664525u + 1013904223u; return (r >> 8) / 16777216.0f; }
+
+static void InitMotes(void)
+{
+	unsigned int r = 0x5EEDu;
+	for (int i = 0; i < DUST_COUNT; i++)
+	{
+		Mote &m = s_motes[i];
+		for (int k = 0; k < 3; k++)
+		{
+			m.pos[k] = s_eye[k] + (Rand01(r) - 0.5f) * DUST_BOX;
+			m.vel[k] = (Rand01(r) - 0.5f) * 3.0f;
+		}
+		m.vel[2] -= 0.6f;                         // dust settles slowly
+		m.phase = Rand01(r) * 6.2831853f;
+		m.size = 0.18f + Rand01(r) * Rand01(r) * 0.5f;
+	}
+	s_motesInit = true;
+}
+
+static void MakeDotTexture(void)
+{
+	const int N = 32;
+	static unsigned char px[N * N * 4];
+	for (int y = 0; y < N; y++)
+		for (int x = 0; x < N; x++)
+		{
+			float dx = (x + 0.5f) / N * 2.0f - 1.0f, dy = (y + 0.5f) / N * 2.0f - 1.0f;
+			float v = expf(-(dx * dx + dy * dy) * 5.0f);
+			unsigned char b = (unsigned char)(v * 255.0f);
+			unsigned char *p = px + (y * N + x) * 4;
+			p[0] = p[1] = p[2] = b;
+			p[3] = 255;
+		}
+	glGenTextures(1, &s_dotTex);
+	glBindTexture(GL_TEXTURE_2D, s_dotTex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, N, N, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+}
+
+// ---------------------------------------------------------------------------
+// Sharper textures: anisotropic + trilinear filtering on every mipmapped 2D
+// texture. Uses GL directly (no engine structures), so it works in any GoldSrc
+// game. Runs shortly after a map loads and again once its models have loaded.
+// ---------------------------------------------------------------------------
+
+#define GL_TEXTURE_MAX_ANISOTROPY      0x84FE
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY  0x84FF
+#define GL_TEXTURE_BINDING_2D_         0x8069
+
+static void ApplyAnisotropy(void)
+{
+	float want = fl_aniso ? fl_aniso->value : 0.0f;
+	const char *ext = (const char *)glGetString(GL_EXTENSIONS);
+	if (want < 1.0f || !ext || !strstr(ext, "texture_filter_anisotropic"))
+		return;
+	float maxAniso = 1.0f;
+	glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &maxAniso);
+	if (want > maxAniso) want = maxAniso;
+
+	GLint prevTex = 0;
+	glGetIntegerv(GL_TEXTURE_BINDING_2D_, &prevTex);
+	while (glGetError() != GL_NO_ERROR) {}
+	int changed = 0;
+	for (GLuint id = 1; id < 16384; id++)
+	{
+		if (!glIsTexture(id))
+			continue;
+		glBindTexture(GL_TEXTURE_2D, id);
+		if (glGetError() != GL_NO_ERROR)
+			continue;                                     // not a 2D texture
+		GLint w1 = 0;
+		glGetTexLevelParameteriv(GL_TEXTURE_2D, 1, GL_TEXTURE_WIDTH, &w1);
+		if (w1 <= 0)
+			continue;                                     // no mipmaps: render targets, HUD, lightmaps
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, want);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		changed++;
+	}
+	glBindTexture(GL_TEXTURE_2D, prevTex);
+	while (glGetError() != GL_NO_ERROR) {}
+	static int logged;
+	if (logged++ < 6)
+		FpLog("fplight: %gx anisotropic filtering on %d textures\n", want, changed);
+}
+
+// Called from HUD_DrawTransparentTriangles, while the 3D view is set up.
+void FpLight_Draw3D(void)
+{
+	if (!eng)
+		return;
+	s_mapFrames++;
+	if (s_mapFrames == 30 || s_mapFrames == 600)
+		ApplyAnisotropy();
+
+	float now = eng->GetClientTime();
+	float dt = (s_dustLast < 0.0f) ? 0.0f : now - s_dustLast;
+	if (dt < 0.0f || dt > 0.25f) dt = 0.0f;
+	s_dustLast = now;
+
+	float amount = fl_dust ? fl_dust->value : 0.0f;
+	if (amount <= 0.0f || s_amount < 0.01f || !s_haveDir)
+		return;
+	if (!FpGL_Init())
+		return;
+	if (!s_motesInit)
+		InitMotes();
+	if (!s_dotTex)
+		MakeDotTexture();
+
+	float fov = fl_fov->value < 10.0f ? 10.0f : (fl_fov->value > 120.0f ? 120.0f : fl_fov->value);
+	float outer = cosf(fov * 0.5f * (float)M_PI / 180.0f), inner = outer + (1.0f - outer) * 0.6f;
+	float range = 700.0f;
+	float c[3] = { 1.0f, 0.94f, 0.82f };
+	if (fl_color && fl_color->string)
+		sscanf(fl_color->string, "%f %f %f", &c[0], &c[1], &c[2]);
+
+	GLint prevProg = 0;
+	glGetIntegerv(0x8B8D, &prevProg);   // GL_CURRENT_PROGRAM
+	glPushAttrib(GL_ALL_ATTRIB_BITS);
+	FpGL_Use(0);
+	glDisable(0x8804);                   // GL_FRAGMENT_PROGRAM_ARB
+	glDisable(0x8620);                   // GL_VERTEX_PROGRAM_ARB
+	for (int u = 3; u >= 0; u--)
+	{
+		FpGL_ActiveTexture(u);
+		glDisable(GL_TEXTURE_2D);
+	}
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, s_dotTex);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glDisable(GL_ALPHA_TEST);
+	glDisable(GL_FOG);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_LIGHTING);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+	glDepthMask(GL_FALSE);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE);
+
+	glBegin(GL_QUADS);
+	for (int i = 0; i < DUST_COUNT; i++)
+	{
+		Mote &m = s_motes[i];
+		// Drift, and wrap around the camera so there is always dust nearby.
+		for (int k = 0; k < 3; k++)
+		{
+			m.pos[k] += (m.vel[k] + sinf(now * 0.3f + m.phase + k) * 0.8f) * dt;
+			float d = m.pos[k] - s_eye[k];
+			if (d > DUST_BOX * 0.5f) m.pos[k] -= DUST_BOX;
+			else if (d < -DUST_BOX * 0.5f) m.pos[k] += DUST_BOX;
+		}
+		// Light it only inside the beam.
+		float L[3] = { m.pos[0] - s_pos[0], m.pos[1] - s_pos[1], m.pos[2] - s_pos[2] };
+		float dist = sqrtf(DotProduct(L, L));
+		if (dist < 8.0f || dist > range)
+			continue;
+		float cs = DotProduct(L, s_dir) / dist;
+		if (cs <= outer)
+			continue;
+		float t = (cs - outer) / (inner - outer);
+		float cone = t >= 1.0f ? 1.0f : t * t * (3.0f - 2.0f * t);
+		float r = dist / (range * 0.35f);
+		float att = 1.0f / (1.0f + r * r);
+		float twinkle = 0.55f + 0.45f * sinf(now * 2.3f + m.phase * 3.0f);
+		float b = cone * att * twinkle * s_amount * amount * 0.9f;
+		if (b < 0.01f)
+			continue;
+		glColor3f(c[0] * b, c[1] * b, c[2] * b);
+		float s = m.size;
+		float rx = s_vright[0] * s, ry = s_vright[1] * s, rz = s_vright[2] * s;
+		float ux = s_vup[0] * s, uy = s_vup[1] * s, uz = s_vup[2] * s;
+		glTexCoord2f(0, 0); glVertex3f(m.pos[0] - rx - ux, m.pos[1] - ry - uy, m.pos[2] - rz - uz);
+		glTexCoord2f(1, 0); glVertex3f(m.pos[0] + rx - ux, m.pos[1] + ry - uy, m.pos[2] + rz - uz);
+		glTexCoord2f(1, 1); glVertex3f(m.pos[0] + rx + ux, m.pos[1] + ry + uy, m.pos[2] + rz + uz);
+		glTexCoord2f(0, 1); glVertex3f(m.pos[0] - rx + ux, m.pos[1] - ry + uy, m.pos[2] - rz + uz);
+	}
+	glEnd();
 
 	FpGL_Use((GLuint)prevProg);
 	glPopAttrib();

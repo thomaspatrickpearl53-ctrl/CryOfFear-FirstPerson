@@ -35,10 +35,12 @@ int  FpCam_UpdateClientData(client_data_t *cdata, float time, int changed);
 void FpPost_Init(void);
 void FpPost_Capture3D(void);
 void FpPost_Render(float time);
+static void Cmd_Bench(void);
 void FpLight_Init(void);
 void FpLight_NewMap(void);
 void FpLight_Update(ref_params_t *pp);
 void FpLight_DrawWorld(void);
+void FpLight_Draw3D(void);
 void FpLight_ProcessPlayerState(struct entity_state_s *dst, const struct entity_state_s *src);
 
 // ---------------------------------------------------------------------------
@@ -721,6 +723,7 @@ extern "C" int W_HUD_Init(void)
 	FpLight_Init();
 	eng->pfnAddCommand("fpbody_info", Cmd_FpbodyInfo);
 	eng->pfnAddCommand("fpbody_reload", Cmd_FpbodyReload);
+	eng->pfnAddCommand("fp_bench", Cmd_Bench);
 	LoadSettings();
 	eng->pfnClientCmd("exec fpbody.cfg\n");
 	return r;
@@ -808,12 +811,138 @@ extern "C" void W_HUD_DrawTransparentTriangles(void)
 {
 	EnsureLoaded();
 	((HUD_DrawTransparentTriangles_t)p_HUD_DrawTransparentTriangles)();
+	FpLight_Draw3D();        // dust in the beam (3D, depth-tested) + texture filtering
 	FpPost_Capture3D();
+}
+
+// ---------------------------------------------------------------------------
+// fp_bench: measures frame times with parts of the mod switched off, to find
+// what causes slowdowns. The player keeps moving/turning while it runs.
+// ---------------------------------------------------------------------------
+
+struct BenchPhase { const char *name; float pp, body, cam; };
+static const BenchPhase s_phases[] = {
+	{ "everything on",          1, 1, 1 },
+	{ "graphics effects off",   0, 1, 1 },
+	{ "body off",               1, 0, 1 },
+	{ "camera + hands off",     1, 1, 0 },
+	{ "whole mod off",          0, 0, 0 },
+};
+static const int   BENCH_PHASES = sizeof(s_phases) / sizeof(s_phases[0]);
+static const float BENCH_SETTLE = 1.0f, BENCH_MEASURE = 6.0f;
+static int    s_benchPhase = -1;
+static double s_benchStart, s_benchLast;
+static float  s_savedPP, s_savedBody, s_savedCam, s_savedVM, s_savedFov;
+static float  s_frames[4096];
+static int    s_numFrames;
+static char   s_benchReport[BENCH_PHASES][160];
+
+static double NowSeconds(void)
+{
+	LARGE_INTEGER c, f;
+	QueryPerformanceCounter(&c);
+	QueryPerformanceFrequency(&f);
+	return (double)c.QuadPart / (double)f.QuadPart;
+}
+
+static float CvarValue(const char *name)
+{
+	cvar_t *c = g_studioEng.GetCvar ? g_studioEng.GetCvar(name) : NULL;
+	return c ? c->value : 1.0f;
+}
+
+static void ApplyPhase(int i)
+{
+	const BenchPhase &p = s_phases[i];
+	eng->Cvar_SetValue((char *)"cl_pp", p.pp ? s_savedPP : 0.0f);
+	eng->Cvar_SetValue((char *)"cl_fpbody", p.body ? s_savedBody : 0.0f);
+	eng->Cvar_SetValue((char *)"cl_fpcam", p.cam ? s_savedCam : 0.0f);
+	eng->Cvar_SetValue((char *)"cl_fpvm", p.cam ? s_savedVM : 0.0f);
+	eng->Cvar_SetValue((char *)"cl_fpfov", p.cam ? s_savedFov : 0.0f);
+	s_benchStart = NowSeconds();
+	s_numFrames = 0;
+	eng->Con_Printf("fp_bench: %d/%d %s - keep turning the camera fast\n", i + 1, BENCH_PHASES, p.name);
+}
+
+static int CompareFloat(const void *a, const void *b)
+{
+	float x = *(const float *)a, y = *(const float *)b;
+	return x < y ? -1 : (x > y ? 1 : 0);
+}
+
+static void FinishPhase(int i)
+{
+	if (s_numFrames < 10)
+	{
+		_snprintf(s_benchReport[i], sizeof(s_benchReport[i]), "%-22s  (not enough frames)", s_phases[i].name);
+		return;
+	}
+	double sum = 0.0;
+	int slow = 0;
+	for (int k = 0; k < s_numFrames; k++)
+	{
+		sum += s_frames[k];
+		if (s_frames[k] > 25.0f) slow++;
+	}
+	qsort(s_frames, s_numFrames, sizeof(float), CompareFloat);
+	float p99 = s_frames[(int)(s_numFrames * 0.99f)];
+	float worst = s_frames[s_numFrames - 1];
+	_snprintf(s_benchReport[i], sizeof(s_benchReport[i]),
+		"%-22s  avg %5.1f fps | 1%% low %5.1f fps | worst %6.1f ms | frames over 25 ms: %d of %d",
+		s_phases[i].name, 1000.0 * s_numFrames / sum, 1000.0f / p99, worst, slow, s_numFrames);
+}
+
+static void Cmd_Bench(void)
+{
+	if (s_benchPhase >= 0)
+	{
+		eng->Con_Printf("fp_bench: already running\n");
+		return;
+	}
+	s_savedPP = CvarValue("cl_pp");
+	s_savedBody = CvarValue("cl_fpbody");
+	s_savedCam = CvarValue("cl_fpcam");
+	s_savedVM = CvarValue("cl_fpvm");
+	s_savedFov = CvarValue("cl_fpfov");
+	s_benchPhase = 0;
+	s_benchLast = 0.0;
+	ApplyPhase(0);
+}
+
+static void BenchFrame(void)
+{
+	if (s_benchPhase < 0)
+		return;
+	double now = NowSeconds();
+	if (s_benchLast > 0.0 && now - s_benchStart > BENCH_SETTLE && s_numFrames < 4096)
+		s_frames[s_numFrames++] = (float)((now - s_benchLast) * 1000.0);
+	s_benchLast = now;
+	if (now - s_benchStart < BENCH_SETTLE + BENCH_MEASURE)
+		return;
+
+	FinishPhase(s_benchPhase);
+	if (++s_benchPhase < BENCH_PHASES)
+	{
+		ApplyPhase(s_benchPhase);
+		return;
+	}
+	// Done: restore the player's settings and report.
+	eng->Cvar_SetValue((char *)"cl_pp", s_savedPP);
+	eng->Cvar_SetValue((char *)"cl_fpbody", s_savedBody);
+	eng->Cvar_SetValue((char *)"cl_fpcam", s_savedCam);
+	eng->Cvar_SetValue((char *)"cl_fpvm", s_savedVM);
+	eng->Cvar_SetValue((char *)"cl_fpfov", s_savedFov);
+	s_benchPhase = -1;
+	Log("fp_bench results:\n");
+	for (int i = 0; i < BENCH_PHASES; i++)
+		Log("  %s\n", s_benchReport[i]);
+	eng->Con_Printf("fp_bench: done, results are in cryoffear\\fpbody.log\n");
 }
 
 extern "C" int W_HUD_Redraw(float time, int intermission)
 {
 	EnsureLoaded();
+	BenchFrame();
 	FpPost_Render(time);    // before the HUD, so the HUD stays crisp
 	return ((HUD_Redraw_t)p_HUD_Redraw)(time, intermission);
 }

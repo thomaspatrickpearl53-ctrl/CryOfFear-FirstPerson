@@ -52,6 +52,9 @@ Type these in the console (`~`). The values shown are the defaults that `install
 | `cl_pp_gi_radius` | 64 | bounce reach |
 | `cl_pp_volumetric` | 1.5 | flashlight beam in the air |
 | `cl_pp_volumetric_always` | 0 | 1 = beam even with the light off |
+| `cl_pp_flashshadows` | 0.8 | shadows cast by the flashlight (railings, boxes, enemies) |
+| `cl_pp_dust` | 1 | dust specks floating in the flashlight beam |
+| `cl_pp_aniso` | 16 | sharper floors and distant surfaces (anisotropic filtering, 0 = off; applied on map load) |
 | `cl_pp_shafts` | 1 | light shafts |
 | `cl_pp_fog` | 0.4 | distance fog |
 | `cl_pp_fog_color` | "0.07 0.075 0.08" | fog colour (RGB 0-1) |
@@ -76,7 +79,7 @@ Type these in the console (`~`). The values shown are the defaults that `install
 | `cl_pp_ssr` | 0 | wet floor reflections (smear on CoF maps) |
 | `cl_pp_ssr_puddles` | 1 | reflections in puddle patches only |
 | `cl_pp_stats` | 1 | log fps and effect cost to `fpbody.log` every 10 s |
-| `cl_pp_debug` | 0 | 1 AO, 2 depth, 3 motion, 4 DoF, 5 bloom+shafts, 6 bounce, 7 beam, 8 reflections, 9 contact |
+| `cl_pp_debug` | 0 | 1 AO, 2 depth, 3 motion, 4 DoF, 5 bloom+shafts, 6 bounce, 7 beam, 8 reflections, 9 contact, 10 flashlight shadows |
 
 ## Projected flashlight (for other GoldSrc games; off in Cry of Fear)
 | command | default | effect |

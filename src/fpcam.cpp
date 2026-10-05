@@ -295,7 +295,7 @@ void FpCam_CalcRefdef(ref_params_t *pp)
 		float lagK = cam_lag->value;
 		if (lagK > 0.0f)
 		{
-			float rate = 22.0f / lagK;
+			float rate = 35.0f / lagK;     // settles in ~0.1 s
 			s_lagYaw   = s_lagYaw + AngNorm(yaw - s_lagYaw) * (1.0f - expf(-rate * dt));
 			s_lagPitch = Approach(s_lagPitch, pitch, rate, dt);
 		}
@@ -304,7 +304,7 @@ void FpCam_CalcRefdef(ref_params_t *pp)
 			s_lagYaw = yaw;
 			s_lagPitch = pitch;
 		}
-		float maxLag = 2.5f * lagK;
+		float maxLag = 1.2f * lagK;    // small, so fast flicks never feel like input lag
 		float lagYaw   = Clamp(AngNorm(s_lagYaw - yaw), -maxLag, maxLag);
 		float lagPitch = Clamp(s_lagPitch - pitch, -maxLag, maxLag);
 

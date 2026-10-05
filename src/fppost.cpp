@@ -334,6 +334,8 @@ static const char *FS_MAIN =
 	"uniform sampler2D giTex;\n"
 	"uniform sampler2D ssrTex;\n"
 	"uniform sampler2D volTex;\n"
+	"uniform sampler2D shTex;\n"
+	"uniform float shStrength;\n"
 	"uniform float contactStrength;\n"
 	"uniform float giStrength;\n"
 	"uniform float volStrength;\n"
@@ -363,10 +365,12 @@ static const char *FS_MAIN =
 	"  if (debug == 6.0) { gl_FragColor = vec4(gi * giStrength, 1.0); return; }\n"
 	"  if (debug == 7.0) { gl_FragColor = vec4(vol, 1.0); return; }\n"
 	"  if (debug == 8.0) { gl_FragColor = vec4(refl.rgb * refl.a, 1.0); return; }\n"
+	"  float sh = texture2D(shTex, uv).r;\n"
+	"  if (debug == 10.0) { gl_FragColor = vec4(vec3(1.0 - sh * max(shStrength, 0.5)), 1.0); return; }\n"
 	"  if (debug == 9.0) { gl_FragColor = vec4(vec3(mix(1.0, aoc.g, contactStrength)), 1.0); return; }\n"
 	"  if (debug == 2.0) { gl_FragColor = vec4(vec3(fract(linearize(dn) / 512.0)), 1.0); return; }\n"
 	"  if (!isWeapon(dn) && !isSky(dn)) {\n"
-	"    c *= mix(1.0, ao, aoStrength) * mix(1.0, aoc.g, contactStrength);\n"
+	"    c *= mix(1.0, ao, aoStrength) * mix(1.0, aoc.g, contactStrength) * (1.0 - clamp(sh * shStrength, 0.0, 0.85));\n"
 	"    c += gi * giStrength * (0.3 + c);\n"
 	"    c = mix(c, refl.rgb, refl.a);\n"
 	"    float d = linearize(dn) * fogDensity;\n"
@@ -396,9 +400,12 @@ static const char *FS_MOTION =
 	"  float l = length(vel);\n"
 	"  if (l > maxLen) vel *= maxLen / l;\n"
 	"  if (debug == 3.0) { gl_FragColor = vec4(abs(vel) * 20.0, 0.0, 1.0); return; }\n"
+	// 12 samples with a per-pixel offset: fixed sample spacing showed up as stepped
+	// ghost copies on fast turns.
+	"  float jit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);\n"
 	"  vec4 acc = c0; float n = 1.0;\n"
-	"  for (int i = 0; i < 8; i++) {\n"
-	"    vec2 t = uv + vel * ((float(i) + 0.5) / 8.0 - 0.5);\n"
+	"  for (int i = 0; i < 12; i++) {\n"
+	"    vec2 t = uv + vel * ((float(i) + jit) / 12.0 - 0.5);\n"
 	"    if (isWeapon(depthN(t))) continue;\n"
 	"    acc += texture2D(src, t); n += 1.0;\n"
 	"  }\n"
@@ -549,6 +556,47 @@ static const char *FS_SSR =
 	"  gl_FragColor = vec4(texture2D(scene, hu).rgb, clamp(a, 0.0, 1.0));\n"
 	"}\n";
 
+// Flashlight shadows (half res): from each pixel the torch reaches, march through
+// the depth buffer toward the torch; anything in the way blocks the light.
+// Output: how much torch light this pixel loses (0..1).
+static const char *FS_FLSHADOW =
+	"uniform vec3 lightPos;\n"
+	"uniform vec3 lightDir;\n"
+	"uniform float coneCos;\n"
+	"uniform float beamRange;\n"
+	"vec2 toUV(vec3 q) { return vec2(q.x * proj.x / -q.z, q.y * proj.y / -q.z) * 0.5 + 0.5; }\n"
+	"void main() {\n"
+	"  float dn = depthN(uv);\n"
+	"  if (isWeapon(dn) || isSky(dn)) { gl_FragColor = vec4(0.0); return; }\n"
+	"  vec3 P = viewPos(uv);\n"
+	"  vec3 N = normalize(cross(dFdx(P), dFdy(P)));\n"
+	"  if (dot(N, P) > 0.0) N = -N;\n"
+	"  vec3 L = lightPos - P;\n"
+	"  float dist = length(L);\n"
+	"  vec3 Ld = L / dist;\n"
+	"  float cone = smoothstep(coneCos, mix(coneCos, 1.0, 0.6), dot(-Ld, lightDir));\n"
+	"  float r = dist / (beamRange * 0.35);\n"
+	"  float lit = cone * max(dot(N, Ld), 0.0) / (1.0 + r * r);\n"
+	"  if (lit < 0.02) { gl_FragColor = vec4(0.0); return; }\n"
+	"  float jit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);\n"
+	"  vec3 start = P + N * (1.0 + dist * 0.004);\n"
+	"  float maxT = dist - 10.0;\n"
+	"  float occ = 0.0;\n"
+	"  for (int i = 0; i < 20; i++) {\n"
+	"    float t = maxT * pow((float(i) + jit) / 20.0, 1.5);\n"
+	"    vec3 q = start + Ld * t;\n"
+	"    if (q.z > -6.0) break;\n"
+	"    vec2 su = toUV(q);\n"
+	"    if (su.x < 0.0 || su.x > 1.0 || su.y < 0.0 || su.y > 1.0) break;\n"
+	"    float sdn = depthN(su);\n"
+	"    if (isWeapon(sdn)) continue;\n"
+	"    float diff = -q.z - linearize(sdn);\n"
+	"    float bias = 0.6 + -q.z * 0.006;\n"
+	"    if (diff > bias && diff < 28.0) { occ = 1.0; break; }\n"
+	"  }\n"
+	"  gl_FragColor = vec4(vec3(occ * lit), 1.0);\n"
+	"}\n";
+
 // Grade: bloom + shafts + lens dirt, eye adaptation, filmic tonemap, colour
 // grade, chromatic aberration, vignette and the damage pulse. Writes luma to alpha.
 static const char *FS_FINAL =
@@ -630,9 +678,9 @@ static const char *FS_FXAA =
 	"  gl_FragColor = vec4(c, 1.0);\n"
 	"}\n";
 
-enum { P_SSAO, P_BLUR, P_BRIGHT, P_DOWN, P_SHAFTS, P_MAIN, P_MOTION, P_DOF, P_FINAL, P_FXAA, P_GI, P_VOL, P_SSR, P_COUNT };
-static const char *s_fragSrc[P_COUNT] = { FS_SSAO, FS_BLUR, FS_BRIGHT, FS_DOWN, FS_SHAFTS, FS_MAIN, FS_MOTION, FS_DOF, FS_FINAL, FS_FXAA, FS_GI, FS_VOL, FS_SSR };
-static const char *s_progName[P_COUNT] = { "ssao", "blur", "bright", "down", "shafts", "main", "motion", "dof", "grade", "fxaa", "gi", "volumetric", "ssr" };
+enum { P_SSAO, P_BLUR, P_BRIGHT, P_DOWN, P_SHAFTS, P_MAIN, P_MOTION, P_DOF, P_FINAL, P_FXAA, P_GI, P_VOL, P_SSR, P_FLSHADOW, P_COUNT };
+static const char *s_fragSrc[P_COUNT] = { FS_SSAO, FS_BLUR, FS_BRIGHT, FS_DOWN, FS_SHAFTS, FS_MAIN, FS_MOTION, FS_DOF, FS_FINAL, FS_FXAA, FS_GI, FS_VOL, FS_SSR, FS_FLSHADOW };
+static const char *s_progName[P_COUNT] = { "ssao", "blur", "bright", "down", "shafts", "main", "motion", "dof", "grade", "fxaa", "gi", "volumetric", "ssr", "flashshadow" };
 static GLuint s_prog[P_COUNT];
 
 static GLuint Compile(GLenum type, const char *a, const char *b, const char *name)
@@ -731,7 +779,7 @@ struct Target { GLuint tex, fbo; int w, h; };
 
 static GLuint s_sceneTex, s_depthTex;
 static Target s_full[2], s_aoA, s_aoB, s_q1, s_q2, s_e1, s_e2, s_shaft, s_tiny, s_lum;
-static Target s_giA, s_giB, s_volA, s_volB, s_ssr;
+static Target s_giA, s_giB, s_volA, s_volB, s_ssr, s_shA, s_shB;
 static GLuint s_dirtTex, s_blackTex;
 static int    s_w, s_h;
 
@@ -769,7 +817,7 @@ static void FreeTarget(Target &t)
 static bool CreateTargets(int w, int h, GLint restoreFbo)
 {
 	Target *all[] = { &s_full[0], &s_full[1], &s_aoA, &s_aoB, &s_q1, &s_q2, &s_e1, &s_e2, &s_shaft, &s_tiny, &s_lum,
-		&s_giA, &s_giB, &s_volA, &s_volB, &s_ssr };
+		&s_giA, &s_giB, &s_volA, &s_volB, &s_ssr, &s_shA, &s_shB };
 	for (Target *t : all) FreeTarget(*t);
 	if (s_sceneTex) glDeleteTextures(1, &s_sceneTex);
 	if (s_depthTex) glDeleteTextures(1, &s_depthTex);
@@ -795,7 +843,8 @@ static bool CreateTargets(int w, int h, GLint restoreFbo)
 		&& MakeTarget(s_shaft, w / 4, h / 4) && MakeTarget(s_tiny, 32, 18) && MakeTarget(s_lum, 64, 36)
 		&& MakeTarget(s_giA, w / 2, h / 2) && MakeTarget(s_giB, w / 2, h / 2)
 		&& MakeTarget(s_volA, w / 4, h / 4) && MakeTarget(s_volB, w / 4, h / 4)
-		&& MakeTarget(s_ssr, w / 2, h / 2);
+		&& MakeTarget(s_ssr, w / 2, h / 2)
+		&& MakeTarget(s_shA, w / 2, h / 2) && MakeTarget(s_shB, w / 2, h / 2);
 	qglBindFramebuffer(GL_FRAMEBUFFER, restoreFbo);
 	s_w = w;
 	s_h = h;
@@ -810,6 +859,7 @@ static cvar_t *pp_enable, *pp_ssao, *pp_ssao_radius, *pp_bloom, *pp_bloom_thr, *
 static cvar_t *pp_dof, *pp_dof_far, *pp_motion, *pp_fog, *pp_fog_color, *pp_shafts, *pp_debug, *pp_stats;
 static cvar_t *pp_aa, *pp_tonemap, *pp_exposure, *pp_adapt, *pp_saturation, *pp_contrast, *pp_tint;
 static cvar_t *pp_vignette, *pp_grain, *pp_ca, *pp_lensdirt, *pp_hurt;
+static cvar_t *pp_flshadow;
 static cvar_t *pp_vol, *pp_vol_always, *pp_gi, *pp_gi_radius, *pp_contact, *pp_contact_len, *pp_ssr, *pp_ssr_puddles;
 
 void FpPost_Init(void)
@@ -840,6 +890,7 @@ void FpPost_Init(void)
 	pp_ca          = FpRegister("cl_pp_ca", "0.4", FCVAR_ARCHIVE);       // chromatic aberration
 	pp_lensdirt    = FpRegister("cl_pp_lensdirt", "0.3", FCVAR_ARCHIVE);
 	pp_hurt        = FpRegister("cl_pp_hurt", "1", FCVAR_ARCHIVE);       // damage / low health pulse
+	pp_flshadow    = FpRegister("cl_pp_flashshadows", "0.8", FCVAR_ARCHIVE); // shadows cast by the flashlight
 	pp_vol         = FpRegister("cl_pp_volumetric", "0.5", FCVAR_ARCHIVE);   // flashlight beam
 	pp_vol_always  = FpRegister("cl_pp_volumetric_always", "0", FCVAR_ARCHIVE); // 1 = beam even if flashlight looks off
 	pp_gi          = FpRegister("cl_pp_gi", "0.6", FCVAR_ARCHIVE);           // bounce light
@@ -1349,10 +1400,10 @@ void FpPost_Render(float time)
 	bool flashOn = (effects & EF_DIMLIGHT) || FpFlashlightOn() || FpLight_EngineFlash() || CvarOr(pp_vol_always, 0.0f) != 0.0f;
 	s_flash += ((flashOn ? 1.0f : 0.0f) - s_flash) * (1.0f - expf(-12.0f * dt));
 	float volAmt = CvarOr(pp_vol, 0.5f) * s_flash;
-	if (volAmt > 0.01f || debug == 7.0f)
+
+	// The torch in view space: same hand position and swaying aim as fplight.cpp.
+	float lp[3] = { 8.0f, -9.0f, -2.0f }, ld[3] = { -8.0f, 9.0f, -300.0f }, coneCos = 0.91f;
 	{
-		// Same hand position and swaying aim as the flashlight (fplight.cpp), in view space.
-		float lp[3] = { 8.0f, -9.0f, -2.0f }, ld[3] = { -8.0f, 9.0f, -300.0f }, coneCos = 0.91f;
 		float wp[3], wd[3];
 		FpLight_Get(wp, wd, &coneCos);
 		if (wd[0] != 0.0f || wd[1] != 0.0f || wd[2] != 0.0f)
@@ -1364,7 +1415,27 @@ void FpPost_Render(float time)
 				ld[i] = m[i] * wd[0] + m[4 + i] * wd[1] + m[8 + i] * wd[2];
 			}
 		}
-		float len = sqrtf(ld[0] * ld[0] + ld[1] * ld[1] + ld[2] * ld[2]);
+	}
+	float len = sqrtf(ld[0] * ld[0] + ld[1] * ld[1] + ld[2] * ld[2]);
+
+	// 4a2. Flashlight shadows (half res) + depth-aware blur for soft edges.
+	float shAmt = CvarOr(pp_flshadow, 0.8f) * s_flash;
+	bool shPass = shAmt > 0.01f || debug == 10.0f;
+	if (shPass)
+	{
+		Use(P_FLSHADOW);
+		DepthUniforms();
+		qglUniform3f(Loc("lightPos"), lp[0], lp[1], lp[2]);
+		qglUniform3f(Loc("lightDir"), ld[0] / len, ld[1] / len, ld[2] / len);
+		U1f("coneCos", coneCos);
+		U1f("beamRange", 700.0f);
+		Into(s_shA);
+		Quad();
+		BlurPass(s_shA, s_shB, true);
+	}
+
+	if (volAmt > 0.01f || debug == 7.0f)
+	{
 		Use(P_VOL);
 		DepthUniforms();
 		qglUniform3f(Loc("lightPos"), lp[0], lp[1], lp[2]);
@@ -1403,6 +1474,8 @@ void FpPost_Render(float time)
 	Bind(2, "giTex", (giAmt > 0.0f || debug == 6.0f) ? s_giA.tex : s_blackTex);
 	Bind(3, "ssrTex", ((ssrAmt > 0.0f || debug == 8.0f) && haveInvMV) ? s_ssr.tex : s_blackTex);
 	Bind(5, "volTex", (volAmt > 0.01f || debug == 7.0f) ? s_volA.tex : s_blackTex);
+	Bind(6, "shTex", shPass ? s_shA.tex : s_blackTex);
+	U1f("shStrength", debug == 10.0f ? fmaxf(shAmt, 0.8f) : shAmt);
 	U1f("contactStrength", aoPass ? fminf(contactAmt, 1.5f) : 0.0f);
 	U1f("giStrength", giAmt);
 	U1f("volStrength", debug == 7.0f ? fmaxf(volAmt, 0.5f) : volAmt);
@@ -1430,7 +1503,7 @@ void FpPost_Render(float time)
 		qglUniformMatrix4fv(Loc("prevVP"), 1, GL_FALSE, s_prevVP);
 		// Normalise to a 1/60 s shutter so the amount doesn't depend on framerate.
 		U1f("scale", motion * (1.0f / 60.0f) / dt);
-		U1f("maxLen", 0.04f);
+		U1f("maxLen", 0.022f);   // cap: fast flicks shouldn't smear the whole screen
 		U1f("debug", debug);
 		Into(s_full[cur ^ 1]);
 		Quad();

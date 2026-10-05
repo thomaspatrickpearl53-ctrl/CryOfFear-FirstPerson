@@ -71,7 +71,9 @@ Your saves and the game's own settings are kept.
 
 **Graphics** (GLSL, about 3 ms per frame at 1080p on an RTX 3050)
 - **Lighting and shadows:** ambient occlusion, contact shadows and bounce light.
-- **Atmosphere:** depth fog, a volumetric flashlight beam that follows the light in your hand, and light shafts.
+- **Atmosphere:** depth fog, a volumetric flashlight beam that follows the light in your hand, dust drifting in the beam, and light shafts.
+- **Flashlight shadows:** railings, boxes and enemies cast moving shadows from your light.
+- **Sharper textures:** 16x anisotropic filtering keeps floors and distant surfaces crisp.
 - **Glow and lens:** bloom with lens dirt.
 - **Blur:** motion blur, and depth of field while aiming.
 - **Image and colour:** filmic highlights, eye adaptation, colour grade, film grain, vignette and chromatic aberration.
@@ -112,6 +114,7 @@ The most useful graphics settings (0 turns an effect off):
 - **Something looks wrong:** type `cl_pp 0` to see whether the graphics effects are the cause. `cl_pp_debug` shows each effect on its own.
 - **Too dark:** raise `cl_pp_exposure`, for example 1.2.
 - **Smeared floors:** keep `cl_pp_ssr 0`. Reflections don't suit Cry of Fear's maps.
+- **Lag check:** type `fp_bench` and keep moving for about 35 seconds. It measures fps with parts of the mod switched off and writes the results to `fpbody.log`. Background recorders (Medal, Discord clips) can also cause big fps drops when the mouse moves.
 - **Logs:** the mod writes what it detected, plus fps and the cost of the effects, to `cryoffear\fpbody.log`.
 - **After a game update:** if Steam updates or verifies the game, run `install.bat` again.
 
