@@ -30,10 +30,10 @@ copy /y "%~dp0bin\client.dll" "%CL%\client.dll" >nul || goto failed
 
 rem Which engine? Cry of Fear: Enhanced (Xash3D) brings its own cheats and only
 rem enables them with the game's original hl.dll, so this mod's hl.dll is
-rem installed on the original engine only.
+rem installed on the original engine only. Only xash.dll counts: Enhanced's
+rem uninstaller leaves its own cof-enhanced folder behind.
 set "ENGINE=original"
 if exist "%GAME%\xash.dll" set "ENGINE=enhanced"
-if exist "%GAME%\cof-enhanced" set "ENGINE=enhanced"
 
 if "%ENGINE%"=="original" (
   if exist "%~dp0bin\hl.dll" (
