@@ -13,7 +13,7 @@ EXPORTS
 	HUD_Frame=T_HUD_Frame
 	HUD_GetHullBounds=T_HUD_GetHullBounds
 	HUD_GetUserEntity=T_HUD_GetUserEntity
-	HUD_Key_Event=T_HUD_Key_Event
+	HUD_Key_Event=W_HUD_Key_Event
 	HUD_PlayerMove=T_HUD_PlayerMove
 	HUD_PlayerMoveInit=T_HUD_PlayerMoveInit
 	HUD_PlayerMoveTexture=T_HUD_PlayerMoveTexture

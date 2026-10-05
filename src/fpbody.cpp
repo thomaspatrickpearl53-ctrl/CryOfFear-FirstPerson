@@ -36,6 +36,14 @@ void FpPost_Init(void);
 void FpPost_Capture3D(void);
 void FpPost_Render(float time);
 static void Cmd_Bench(void);
+void FpMenu_Init(void);
+void FpMenu_Draw(void);
+int  FpMenu_Key(int down, int keynum);
+void FpMenu_CreateMove(usercmd_t *cmd);
+void FpFists_Init(void);
+void FpFists_NewMap(void);
+void FpFists_Frame(void);
+void FpFists_CreateMove(usercmd_t *cmd);
 void FpLight_Init(void);
 void FpLight_NewMap(void);
 void FpLight_Update(ref_params_t *pp);
@@ -179,6 +187,9 @@ static void Log(const char *fmt, ...)
 		fclose(f);
 	}
 }
+
+// Game folder ("...\cryoffear\") for the other modules.
+void FpGameDir(char *out, size_t size) { GameDir(out, size); }
 
 // Which game is this? (the folder above cl_dlls: "cryoffear", "AoMDC", ...)
 bool FpIsCoF(void)
@@ -724,6 +735,8 @@ extern "C" int W_HUD_Init(void)
 	eng->pfnAddCommand("fpbody_info", Cmd_FpbodyInfo);
 	eng->pfnAddCommand("fpbody_reload", Cmd_FpbodyReload);
 	eng->pfnAddCommand("fp_bench", Cmd_Bench);
+	FpMenu_Init();
+	FpFists_Init();
 	LoadSettings();
 	eng->pfnClientCmd("exec fpbody.cfg\n");
 	return r;
@@ -745,6 +758,7 @@ extern "C" int W_HUD_VidInit(void)
 	g_bodyModel = NULL;     // models are reloaded on every map change
 	ResetFlashlight();      // the server re-sends the flashlight state on spawn
 	FpLight_NewMap();
+	FpFists_NewMap();
 	g_loadTried = false;
 	g_bodyVisible = false;
 	g_lastTime = -1.0f;
@@ -769,6 +783,7 @@ extern "C" void W_V_CalcRefdef(ref_params_t *pparams)
 	UpdateBody(pparams);         // body placement uses the real aim, before camera effects
 	FpCam_CalcRefdef(pparams);
 	FpLight_Update(pparams);     // after the camera effects: the torch is in the hand
+	FpFists_Frame();             // fists mode: swap the nightstick viewmodel
 	if (fp_debug && fp_debug->value != 0.0f)
 	{
 		static float next;
@@ -944,7 +959,19 @@ extern "C" int W_HUD_Redraw(float time, int intermission)
 	EnsureLoaded();
 	BenchFrame();
 	FpPost_Render(time);    // before the HUD, so the HUD stays crisp
-	return ((HUD_Redraw_t)p_HUD_Redraw)(time, intermission);
+	int r = ((HUD_Redraw_t)p_HUD_Redraw)(time, intermission);
+	FpMenu_Draw();          // on top of the HUD
+	return r;
+}
+
+typedef int (*HUD_Key_Event_t)(int, int, const char *);
+
+extern "C" int W_HUD_Key_Event(int down, int keynum, const char *binding)
+{
+	EnsureLoaded();
+	if (!FpMenu_Key(down, keynum))
+		return 0;           // the menu used this key
+	return ((HUD_Key_Event_t)p_HUD_Key_Event)(down, keynum, binding);
 }
 
 typedef void (*CL_CreateMove_t)(float, usercmd_t *, int);
@@ -955,6 +982,8 @@ extern "C" void W_CL_CreateMove(float frametime, usercmd_t *cmd, int active)
 	EnsureLoaded();
 	((CL_CreateMove_t)p_CL_CreateMove)(frametime, cmd, active);
 	FpCam_CreateMove(cmd);
+	FpMenu_CreateMove(cmd);     // big menu: mouse moves the cursor, not the view
+	FpFists_CreateMove(cmd);    // fists mode: mouse 2 punches too
 }
 
 extern "C" int W_HUD_UpdateClientData(client_data_t *cdata, float time)

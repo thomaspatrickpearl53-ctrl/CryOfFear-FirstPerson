@@ -1,6 +1,6 @@
 @echo off
 rem Completely removes the first-person mod from Cry of Fear:
-rem   - restores the original cryoffear\cl_dlls\client.dll
+rem   - restores the original cryoffear\cl_dlls\client.dll and hl.dll
 rem   - deletes the mod's backup, settings, log and generated body model
 rem   - removes the mod's settings (cl_fp*, cl_pp*) and its F7/F6 toggle binds from config.cfg
 rem Your saves and the game's own settings are not touched.
@@ -20,7 +20,7 @@ if not exist "%CF%\cl_dlls\client.dll" (
   exit /b 1
 )
 
-tasklist /fi "imagename eq cof.exe" | find /i "cof.exe" >nul && (
+tasklist | findstr /i /b "cof.exe CoFLaunchApp.exe" >nul && (
   echo Cry of Fear is running. Close it first, then run this again.
   pause
   exit /b 1
@@ -41,17 +41,23 @@ if exist "%CF%\cl_dlls\client_cof.dll" (
   copy /y "%CF%\cl_dlls\client.dll.original" "%CF%\cl_dlls\client.dll" >nul || goto failed
 )
 if exist "%CF%\cl_dlls\client.dll.original" del /q "%CF%\cl_dlls\client.dll.original"
-echo  - original client.dll restored
+if exist "%CF%\cl_dlls\hl_cof.dll" (
+  move /y "%CF%\cl_dlls\hl_cof.dll" "%CF%\cl_dlls\hl.dll" >nul || goto failed
+) else if exist "%CF%\cl_dlls\hl.dll.original" (
+  copy /y "%CF%\cl_dlls\hl.dll.original" "%CF%\cl_dlls\hl.dll" >nul || goto failed
+)
+if exist "%CF%\cl_dlls\hl.dll.original" del /q "%CF%\cl_dlls\hl.dll.original"
+echo  - original client.dll and hl.dll restored
 
 rem 2. Files the mod created
-for %%F in (fpbody.cfg fpbody.cfg.bak fpbody.log) do if exist "%CF%\%%F" del /q "%CF%\%%F"
+for %%F in (fpbody.cfg fpbody.cfg.bak fpbody.log fpcheats.cfg) do if exist "%CF%\%%F" del /q "%CF%\%%F"
 if exist "%CF%\models\fpbody" rd /s /q "%CF%\models\fpbody"
 echo  - mod settings, log and generated body model deleted
 
 rem 3. The mod's lines in the game's config files (the game has no cl_fp* / cl_pp* settings of its own)
 for %%C in ("%GAME%\config.cfg" "%CF%\config.cfg") do (
   if exist "%%~C" (
-    findstr /v /r /i /c:"^cl_fp" /c:"^cl_pp" /c:"pp_toggle" /c:"ssao_toggle" "%%~C" > "%%~C.tmp"
+    findstr /v /r /i /c:"^cl_fp" /c:"^cl_pp" /c:"^fp_unlock_cheats" /c:"pp_toggle" /c:"ssao_toggle" /c:"fp_menu" "%%~C" > "%%~C.tmp"
     move /y "%%~C.tmp" "%%~C" >nul
   )
 )

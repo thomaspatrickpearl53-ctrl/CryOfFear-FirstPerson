@@ -501,7 +501,9 @@ static const char *FS_VOL =
 	"    float dust = 0.75 + 0.25 * sin(p.x * 0.05 + time) * sin(p.y * 0.07 - time * 0.7) * sin(p.z * 0.06 + time * 0.3);\n"
 	"    acc += cone * att * dust * stepLen;\n"
 	"  }\n"
-	"  gl_FragColor = vec4(vec3(acc * 0.006), 1.0);\n"
+	// Soft saturation, like real fog: long beams in open areas get denser but can
+	// never add more than a quarter-strength glow (times cl_pp_volumetric).
+	"  gl_FragColor = vec4(vec3(1.0 - exp(-acc * 0.004)) * 0.25, 1.0);\n"
 	"}\n";
 
 // Wet floors (half res): screen-space reflections on upward-facing surfaces,

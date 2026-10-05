@@ -10,20 +10,25 @@ if not defined GAME if exist "%ProgramFiles(x86)%\Steam\steamapps\common\Cry of 
 if not defined GAME set /p "GAME=Paste the path of your Cry of Fear folder (the one with cof.exe): "
 for %%G in ("%GAME%") do set "GAME=%%~fG"
 
-tasklist /fi "imagename eq cof.exe" | find /i "cof.exe" >nul && (
+tasklist | findstr /i /b "cof.exe CoFLaunchApp.exe" >nul && (
   echo Cry of Fear is running. Close it first, then run this again.
   if not defined FP_NOPAUSE pause
   exit /b 1
 )
 
 set "CL=%GAME%\cryoffear\cl_dlls"
-if not exist "%CL%\client_cof.dll" (
+if not exist "%CL%\client_cof.dll" if not exist "%CL%\hl_cof.dll" (
   echo The mod isn't installed in "%GAME%".
   if not defined FP_NOPAUSE pause
   exit /b 0
 )
-move /y "%CL%\client_cof.dll" "%CL%\client.dll" >nul || (
+if exist "%CL%\client_cof.dll" move /y "%CL%\client_cof.dll" "%CL%\client.dll" >nul || (
   echo Couldn't restore client.dll. Try right-click ^> Run as administrator.
+  if not defined FP_NOPAUSE pause
+  exit /b 1
+)
+if exist "%CL%\hl_cof.dll" move /y "%CL%\hl_cof.dll" "%CL%\hl.dll" >nul || (
+  echo Couldn't restore hl.dll. Try right-click ^> Run as administrator.
   if not defined FP_NOPAUSE pause
   exit /b 1
 )

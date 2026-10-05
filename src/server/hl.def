@@ -1,0 +1,5 @@
+LIBRARY hl
+EXPORTS
+	GiveFnptrsToDll=W_GiveFnptrsToDll
+	GetEntityAPI=W_GetEntityAPI
+	GetEntityAPI2=W_GetEntityAPI2
