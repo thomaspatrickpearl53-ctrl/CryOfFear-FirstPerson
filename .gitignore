@@ -1,0 +1,11 @@
+# build output (the release DLL lives in bin/)
+build/
+*.obj
+*.exp
+*.lib
+*.pdb
+
+# files games write when launched from this folder
+debug.log
+steam_appid.txt
+*.log
