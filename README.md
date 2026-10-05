@@ -8,6 +8,27 @@ A client-side mod for **Cry of Fear** (Steam). It adds:
 
 Singleplayer only. Only `cryoffear\cl_dlls\client.dll` is replaced, and the original is kept. No game files are included in this repository.
 
+## Showcase
+
+![Effects switched on and off](docs/media/before_after.gif)
+
+![Shaders off vs shaders on](docs/media/shaders_before_after.jpg)
+
+<table>
+  <tr>
+    <td><img src="docs/media/flashlight.gif" alt="Volumetric flashlight beam"></td>
+    <td><img src="docs/media/light_glow.gif" alt="Bloom and light glow"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/legs.gif" alt="Simon's body and legs in first person"></td>
+    <td><img src="docs/media/sprint.gif" alt="Sprinting: head bob and weapon motion"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/aim.gif" alt="Aiming: zoom and focus blur"></td>
+    <td></td>
+  </tr>
+</table>
+
 ## Install
 1. Download the latest release zip from the **Releases** page (or clone this repo).
 2. Extract the folder **into your Cry of Fear folder**, next to `cof.exe`. To find it: Steam → right-click Cry of Fear → Manage → Browse local files.
