@@ -279,15 +279,19 @@ static bool BuildFists(void)
 					dev = max(dev, (float)fabs(anims[i].at(f, b, c, nb) - bones[b].value[c]));
 			bones[b].scale[c] = dev > 1e-6f ? dev / 32000.0f : 1.0f;
 		}
-	// Appending below moves the buffer, so keep a copy of the bones.
+	// Inserting below moves the buffer, so keep a copy of the bones.
 	std::vector<mstudiobone_t> boneCopy(bones, bones + nb);
 	bones = boneCopy.data();
 
-	// Re-encode every sequence at the end of the file, then a new sequence table.
+	// The new animations and sequence table go in just before the texture
+	// pixels: GoldSrc keeps only the part of a model before texturedataindex in
+	// memory (the pixels go to the GPU), so anything after it is lost.
+	size_t insertAt = (hdr->numtextures > 0 && hdr->texturedataindex > 0) ? (size_t)hdr->texturedataindex : stick.size();
+	std::vector<byte> extra;
 	for (size_t i = 0; i < anims.size(); i++)
 	{
-		Align4(stick);
-		size_t base = stick.size();
+		Align4(extra);
+		size_t base = insertAt + extra.size();
 		std::vector<mstudioanim_t> table(nb);
 		std::vector<short> values;
 		size_t tableBytes = nb * sizeof(mstudioanim_t);
@@ -323,15 +327,28 @@ static bool BuildFists(void)
 					values.insert(values.end(), raw.begin() + f, raw.begin() + f + n);
 				}
 			}
-		Put(stick, table.data(), tableBytes);
-		Put(stick, values.data(), values.size() * sizeof(short));
+		Put(extra, table.data(), tableBytes);
+		Put(extra, values.data(), values.size() * sizeof(short));
 		anims[i].desc.animindex = (int)base;
 	}
-	Align4(stick);
-	size_t seqBase = stick.size();
+	Align4(extra);
+	size_t seqBase = insertAt + extra.size();
 	for (size_t i = 0; i < anims.size(); i++)
-		Put(stick, &anims[i].desc, sizeof(mstudioseqdesc_t));
+		Put(extra, &anims[i].desc, sizeof(mstudioseqdesc_t));
+	Align4(extra);
+
+	// Splice it in and move everything after it (the texture pixels).
+	int shift = (int)extra.size();
+	stick.insert(stick.begin() + insertAt, extra.begin(), extra.end());
 	hdr = (studiohdr_t *)stick.data();
+	if (hdr->numtextures > 0 && (size_t)hdr->texturedataindex >= insertAt)
+	{
+		hdr->texturedataindex += shift;
+		mstudiotexture_t *tex = (mstudiotexture_t *)(stick.data() + hdr->textureindex);
+		for (int t = 0; t < hdr->numtextures; t++)
+			if ((size_t)tex[t].index >= insertAt)
+				tex[t].index += shift;
+	}
 	hdr->seqindex = (int)seqBase;
 	hdr->numseq = (int)anims.size();
 	hdr->length = (int)stick.size();
