@@ -368,6 +368,15 @@ static bool FistsOn(void)
 	return s_holdingStick && s_fists && s_fists->value != 0.0f;
 }
 
+// From HUD_CreateEntities, before the frame is drawn: build and load the model
+// there, never mid-render. GoldSrc's model cache can move other models' data
+// while loading, which crashed the renderer when this ran in V_CalcRefdef.
+void FpFists_Prepare(void)
+{
+	if (s_fists && s_fists->value != 0.0f)
+		LoadFists();
+}
+
 // After V_CalcRefdef: swap the nightstick for the fists and its swings for punches.
 void FpFists_Frame(void)
 {
@@ -376,10 +385,7 @@ void FpFists_Frame(void)
 		s_holdingStick = true;                  // still ours from last frame
 	else
 		s_holdingStick = vm && vm->model && strstr(vm->model->name, "v_nightstick.mdl") != NULL;
-	if (!FistsOn())
-		return;
-	LoadFists();
-	if (!s_model)
+	if (!FistsOn() || !s_model)
 		return;
 	vm->model = s_model;
 	int seq = vm->curstate.sequence;

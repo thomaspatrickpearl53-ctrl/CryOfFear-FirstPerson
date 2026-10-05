@@ -43,6 +43,7 @@ void FpMenu_CreateMove(usercmd_t *cmd);
 void FpCrash_Init(void);
 void FpFists_Init(void);
 void FpFists_NewMap(void);
+void FpFists_Prepare(void);
 void FpFists_Frame(void);
 void FpFists_CreateMove(usercmd_t *cmd);
 void FpLight_Init(void);
@@ -770,6 +771,7 @@ extern "C" int W_HUD_VidInit(void)
 extern "C" void W_HUD_CreateEntities(void)
 {
 	o_HUD_CreateEntities();
+	FpFists_Prepare();          // loads models before the frame is drawn
 	if (!fp_enable || fp_enable->value == 0.0f)
 		return;
 	if (!g_loadTried || _stricmp(g_bodyModelName, fp_model->string) || g_bodyArms != fp_arms->value)
