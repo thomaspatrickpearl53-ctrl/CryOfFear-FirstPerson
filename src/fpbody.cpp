@@ -46,10 +46,6 @@ void FpFists_NewMap(void);
 void FpFists_Prepare(void);
 void FpFists_Frame(void);
 void FpFists_CreateMove(usercmd_t *cmd);
-void FpKick_Init(void);
-void FpKick_NewMap(void);
-void FpKick_CreateEntities(void);
-void FpKick_CalcRefdef(ref_params_t *pp);
 void FpLight_Init(void);
 void FpLight_NewMap(void);
 void FpLight_Update(ref_params_t *pp);
@@ -744,7 +740,6 @@ extern "C" int W_HUD_Init(void)
 	eng->pfnAddCommand("fp_bench", Cmd_Bench);
 	FpMenu_Init();
 	FpFists_Init();
-	FpKick_Init();
 	LoadSettings();
 	eng->pfnClientCmd("exec fpbody.cfg\n");
 	return r;
@@ -767,7 +762,6 @@ extern "C" int W_HUD_VidInit(void)
 	ResetFlashlight();      // the server re-sends the flashlight state on spawn
 	FpLight_NewMap();
 	FpFists_NewMap();
-	FpKick_NewMap();
 	g_loadTried = false;
 	g_bodyVisible = false;
 	g_lastTime = -1.0f;
@@ -778,7 +772,6 @@ extern "C" void W_HUD_CreateEntities(void)
 {
 	o_HUD_CreateEntities();
 	FpFists_Prepare();          // loads models before the frame is drawn
-	FpKick_CreateEntities();
 	if (!fp_enable || fp_enable->value == 0.0f)
 		return;
 	if (!g_loadTried || _stricmp(g_bodyModelName, fp_model->string) || g_bodyArms != fp_arms->value)
@@ -795,7 +788,6 @@ extern "C" void W_V_CalcRefdef(ref_params_t *pparams)
 	FpCam_CalcRefdef(pparams);
 	FpLight_Update(pparams);     // after the camera effects: the torch is in the hand
 	FpFists_Frame();             // fists mode: swap the nightstick viewmodel
-	FpKick_CalcRefdef(pparams);  // kick leg follows the (final) viewmodel
 	if (fp_debug && fp_debug->value != 0.0f)
 	{
 		static float next;

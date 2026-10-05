@@ -140,13 +140,6 @@ static void ResetAll(const ref_params_t *pp)
 	s_airVelZ = 0.0f;
 }
 
-// The player's own first-person view last frame (not a cutscene, third person,
-// intermission or death).
-bool FpCam_PlayerView(void)
-{
-	return s_active;
-}
-
 static bool PlayerView(const ref_params_t *pp)
 {
 	CL_IsThirdPerson_t thirdperson = (CL_IsThirdPerson_t)p_CL_IsThirdPerson;

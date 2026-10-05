@@ -48,7 +48,6 @@ struct Item
 
 static const Item kWeapons[] = {
 	S("Fists mode (nightstick becomes fists, both buttons punch)", "cl_fists", "0 1", "Off|On"),
-	S("Kick on F (needs Brutal Half-Life, see README)", "cl_fpkick", "0 1", "Off|On"),
 	A("Glock", "fp_give weapon_glock"), A("VP70", "fp_give weapon_vp70"), A("P345", "fp_give weapon_p345"),
 	A("Revolver", "fp_give weapon_revolver"), A("TMP", "fp_give weapon_tmp"), A("MP5", "fp_give weapon_mp5"),
 	A("M16", "fp_give weapon_m16"), A("FAMAS", "fp_give weapon_famas"), A("G43", "fp_give weapon_g43"),
@@ -141,7 +140,6 @@ static const Item kHands[] = {
 	S("Breathing", "cl_fpvm_breath", "0 1 2", "Off|Normal|Strong"),
 	S("Sprint / jump / fire movement", "cl_fpvm_action", "0 1", "Off|On"),
 	S("Fists mode (nightstick becomes fists, both buttons punch)", "cl_fists", "0 1", "Off|On"),
-	S("Kick on F (needs Brutal Half-Life, see README)", "cl_fpkick", "0 1", "Off|On"),
 };
 static const Item kBody[] = {
 	S("Body and legs", "cl_fpbody", "0 1", "Off|On"),
