@@ -37,7 +37,13 @@ Singleplayer only. Only `cryoffear\cl_dlls\client.dll` is replaced, and the orig
 
 `install.bat` also works from anywhere if Cry of Fear is in the default Steam folder. You can also pass the path: `install.bat "D:\SteamLibrary\steamapps\common\Cry of Fear"`.
 
-**Uninstall:** run `uninstall.bat`, or use Steam → *Verify integrity of game files*.
+**Uninstall:** run `uninstall.bat`, or use Steam → *Verify integrity of game files*. This keeps your mod settings in case you reinstall.
+
+**Remove everything:** `remove_everything.bat` restores the original `client.dll` and also deletes:
+- the mod's backup, settings, log and generated body model;
+- its `cl_fp*` / `cl_pp*` settings and toggle binds in `config.cfg`.
+
+Your saves and the game's own settings are kept.
 
 **Updating:** run `install.bat` again; it keeps your settings. Use `install.bat reset` to go back to the default settings.
 

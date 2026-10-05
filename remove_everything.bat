@@ -1,0 +1,68 @@
+@echo off
+rem Completely removes the first-person mod from Cry of Fear:
+rem   - restores the original cryoffear\cl_dlls\client.dll
+rem   - deletes the mod's backup, settings, log and generated body model
+rem   - removes the mod's settings (cl_fp*, cl_pp*) and its F7/F6 toggle binds from config.cfg
+rem Your saves and the game's own settings are not touched.
+rem Usage: remove_everything.bat ["path\to\Cry of Fear"]
+setlocal EnableDelayedExpansion
+set "GAME="
+if not "%~1"=="" if exist "%~1\cryoffear\cl_dlls\client.dll" set "GAME=%~f1"
+if not defined GAME if exist "%~dp0cryoffear\cl_dlls\client.dll" set "GAME=%~dp0."
+if not defined GAME if exist "%~dp0..\cryoffear\cl_dlls\client.dll" set "GAME=%~dp0.."
+if not defined GAME if exist "%ProgramFiles(x86)%\Steam\steamapps\common\Cry of Fear\cryoffear\cl_dlls\client.dll" set "GAME=%ProgramFiles(x86)%\Steam\steamapps\common\Cry of Fear"
+if not defined GAME set /p "GAME=Paste the path of your Cry of Fear folder (the one with cof.exe): "
+for %%G in ("%GAME%") do set "GAME=%%~fG"
+set "CF=%GAME%\cryoffear"
+if not exist "%CF%\cl_dlls\client.dll" (
+  echo "%GAME%" doesn't look like a Cry of Fear folder.
+  pause
+  exit /b 1
+)
+
+tasklist /fi "imagename eq cof.exe" | find /i "cof.exe" >nul && (
+  echo Cry of Fear is running. Close it first, then run this again.
+  pause
+  exit /b 1
+)
+
+echo This removes the first-person mod and ALL of its settings from:
+echo   %GAME%
+echo Your saves and the game's own settings stay.
+if not defined FP_YES (
+  choice /c YN /m "Continue"
+  if errorlevel 2 exit /b 0
+)
+
+rem 1. The game's original client.dll
+if exist "%CF%\cl_dlls\client_cof.dll" (
+  move /y "%CF%\cl_dlls\client_cof.dll" "%CF%\cl_dlls\client.dll" >nul || goto failed
+) else if exist "%CF%\cl_dlls\client.dll.original" (
+  copy /y "%CF%\cl_dlls\client.dll.original" "%CF%\cl_dlls\client.dll" >nul || goto failed
+)
+if exist "%CF%\cl_dlls\client.dll.original" del /q "%CF%\cl_dlls\client.dll.original"
+echo  - original client.dll restored
+
+rem 2. Files the mod created
+for %%F in (fpbody.cfg fpbody.cfg.bak fpbody.log) do if exist "%CF%\%%F" del /q "%CF%\%%F"
+if exist "%CF%\models\fpbody" rd /s /q "%CF%\models\fpbody"
+echo  - mod settings, log and generated body model deleted
+
+rem 3. The mod's lines in the game's config files (the game has no cl_fp* / cl_pp* settings of its own)
+for %%C in ("%GAME%\config.cfg" "%CF%\config.cfg") do (
+  if exist "%%~C" (
+    findstr /v /r /i /c:"^cl_fp" /c:"^cl_pp" /c:"pp_toggle" /c:"ssao_toggle" "%%~C" > "%%~C.tmp"
+    move /y "%%~C.tmp" "%%~C" >nul
+  )
+)
+echo  - mod settings and toggle binds removed from config.cfg
+
+echo.
+echo Done. Cry of Fear is back to the original.
+pause
+exit /b 0
+
+:failed
+echo Couldn't restore client.dll. Try right-click ^> Run as administrator.
+pause
+exit /b 1
