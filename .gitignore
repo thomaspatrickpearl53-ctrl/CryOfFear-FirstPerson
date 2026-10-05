@@ -9,3 +9,7 @@ build/
 debug.log
 steam_appid.txt
 *.log
+
+# Source map converter working files (built from your own game files)
+tools/source2cof_work/
+__pycache__/
