@@ -164,13 +164,12 @@ static void Give(edict_t *player, const char *classname)
 		return;
 	}
 	e->v.spawnflags |= (1 << 30);   // SF_NORESPAWN
-	// Pick it up exactly once: touch, like the game's own GiveNamedItem, and "use"
-	// (how Cry of Fear picks up most things) only if the touch left it lying
-	// there. Picking a weapon up twice puts it in the inventory list twice,
-	// which crashes the engine when it's drawn.
-	g_dll.pfnTouch(e, player);
+	// Cry of Fear picks things up with "use" (calling its weapons' touch with the
+	// player crashes); plain Half-Life items only by touch, so touch only if
+	// the use left it lying there.
+	g_dll.pfnUse(e, player);
 	if (!PickedUp(e, player))
-		g_dll.pfnUse(e, player);
+		g_dll.pfnTouch(e, player);
 	Print(player, "Gave %s", classname + (strchr(classname, '_') ? strchr(classname, '_') - classname + 1 : 0));
 }
 
