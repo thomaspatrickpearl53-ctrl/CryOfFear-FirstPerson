@@ -14,6 +14,7 @@ The mod works on both:
 | Graphics effects | yes | yes |
 | Typical fps (RTX 3050, 1080p, all effects) | 60–100 (engine capped at `fps_max`) | about 200 |
 | F8 spawn/cheat menu | yes, this mod's cheats | yes, Enhanced's cheats |
+| Fists mode | yes | yes |
 | Files the mod replaces | `client.dll` and `hl.dll` | `client.dll` only |
 
 ### Cheats in the F8 menu
@@ -45,6 +46,8 @@ Steam puts back the original `client.dll` (and `hl.dll`). Run **`install.bat`** 
 - **Flashlight haze:** on Enhanced, open areas let the beam reach further. It's capped so it can't turn white, but if it's still too strong for your taste, lower `cl_pp_volumetric`.
 - **Background recorders:** Medal or Discord clips can tank the original engine's fps whenever the mouse moves. Close them if you see that. `fp_bench` helps tell whether the mod is to blame.
 - **Running as:** with Enhanced the game runs as `CoFLaunchApp.exe`, not `cof.exe`. The mod's scripts check for both before touching files.
+- **Detecting Enhanced:** `install.bat` looks for `xash.dll` in the game folder. Enhanced's uninstaller leaves its `cof-enhanced` folder behind, and that alone doesn't count.
+- **A second copy of the game** (for example one engine in Steam's folder and the other elsewhere): Steam and `cof.exe` always start the copy in Steam's library. Start the other copy with its own `Play Modded.bat`.
 
 ## Removing everything
 `remove_everything.bat` works on both engines. It restores the original `client.dll` and `hl.dll` and deletes the mod's settings, but doesn't touch Cry of Fear: Enhanced. Use Enhanced's own uninstaller for that.

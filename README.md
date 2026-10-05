@@ -47,7 +47,7 @@ This mod is compatible with [Cry of Fear: Enhanced](https://github.com/hajdawery
 **Uninstall:** run `uninstall.bat`, or use Steam → *Verify integrity of game files*. This keeps your mod settings in case you reinstall.
 
 **Remove everything:** `remove_everything.bat` restores the original `client.dll` and also deletes:
-- the mod's backup, settings, log and generated body model;
+- the mod's backups, settings, logs and generated models;
 - its `cl_fp*` / `cl_pp*` settings and toggle binds in `config.cfg`.
 
 Your saves and the game's own settings are kept.
@@ -75,6 +75,15 @@ Your saves and the game's own settings are kept.
 - Idle breathing.
 - Sprint lowering, airborne float, landing dip, fire kick and reload offset.
 - Field of view widens while sprinting and narrows while aiming.
+
+**Fists mode** (`cl_fists 1`, or in the F8 menu)
+- The nightstick becomes bare fists: mouse 1 throws a right jab, mouse 2 a left cross.
+- The punches are the game's own unused bare-hand animations; hits do the nightstick's damage.
+- The fists model is built on your PC from your own game files.
+
+**F8 menu: spawn, cheats and settings**
+- Press **F8** (or type `fp_menu`) for a mouse-driven menu: give yourself any weapon, ammo or item, spawn any monster, switch cheats on and off, and change every mod setting.
+- Cheats on the original engine: god mode, noclip, no target, infinite ammo, full health. On Cry of Fear: Enhanced the menu uses Enhanced's own cheats. See [docs/ENGINES.md](docs/ENGINES.md).
 
 **Graphics** (GLSL, about 3 ms per frame at 1080p on an RTX 3050)
 - **Lighting and shadows:** ambient occlusion, contact shadows and bounce light.
@@ -122,7 +131,8 @@ The most useful graphics settings (0 turns an effect off):
 - **Too dark:** raise `cl_pp_exposure`, for example 1.2.
 - **Smeared floors:** keep `cl_pp_ssr 0`. Reflections don't suit Cry of Fear's maps.
 - **Lag check:** type `fp_bench` and keep moving for about 35 seconds. It measures fps with parts of the mod switched off and writes the results to `fpbody.log`. Background recorders (Medal, Discord clips) can also cause big fps drops when the mouse moves.
-- **Logs:** the mod writes what it detected, plus fps and the cost of the effects, to `cryoffear\fpbody.log`.
+- **Logs:** the mod writes what it detected, plus fps and the cost of the effects, to `cryoffear\fpbody.log`. If the game crashes or freezes, the log also records where (lines starting with `crash:`). Include them when you report a problem.
+- **Playing a copy of the game outside Steam's folder:** Steam and `cof.exe` always start the copy in Steam's library. Use `Play Modded.bat` in the copy's own folder; it starts that copy directly (Steam must be running).
 - **After a game update:** if Steam updates or verifies the game, run `install.bat` again.
 
 ## How it works
@@ -135,7 +145,9 @@ Requirements:
 - Visual Studio with the C++ desktop tools (the build targets 32-bit).
 - The Half-Life SDK headers: `git clone https://github.com/ValveSoftware/halflife.git`.
 
-Then run `build.bat path\to\halflife`. The DLL lands in `build\client.dll`. Copy it to `bin\client.dll` to package it.
+Then run `build.bat path\to\halflife`. It builds `build\client.dll` and the server wrapper `build\hl.dll` (it also needs Python, for the export-name patch). Copy both to `bin\` to package them.
+
+The server wrapper is compiled against `src\server\cof\progdefs.h`: Cry of Fear's `entvars_t` has one extra field after `light_level`, so every field from `sequence` on is 4 bytes later than in the Half-Life SDK. `test\entvars_layout.py` reads the real layout from the game's own `hl.dll`.
 
 `test\pptest.cpp` compiles every shader and benchmarks one frame in a hidden OpenGL window:
 ```

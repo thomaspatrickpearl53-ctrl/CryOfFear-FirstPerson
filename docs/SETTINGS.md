@@ -32,6 +32,7 @@ Type these in the console (`~`). The values shown are the defaults that `install
 | `cl_fpvm_sway` | 1 | inertia sway |
 | `cl_fpvm_breath` | 1 | idle breathing |
 | `cl_fpvm_action` | 1 | sprint/jump/land/fire/reload offsets |
+| `cl_fists` | 0 | fists mode: the nightstick becomes bare fists (mouse 1 jab, mouse 2 cross). `fp_fists` toggles it |
 
 ## Field of view
 | command | default | effect |
