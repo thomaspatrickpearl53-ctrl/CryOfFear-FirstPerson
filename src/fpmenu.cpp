@@ -191,8 +191,8 @@ static const int kNumPages = sizeof(kPages) / sizeof(kPages[0]);
 static const Page kCheatsPageEnhanced = PAGE("cheats", "Cheats (Cry of Fear: Enhanced)", kCheatsEnhanced, "main");
 
 // Tabs of the big menu, in order.
-static const char *const kTabs[] = { "weapons", "ammo", "items", "monsters", "cheats", "graphics", "camera", "hands", "body", "menu" };
-static const char *const kTabNames[] = { "Weapons", "Ammo", "Items", "Monsters", "Cheats", "Graphics", "Camera", "Hands", "Body", "Menu" };
+static const char *const kTabs[] = { "weapons", "ammo", "items", "monsters", "clothes", "cheats", "graphics", "camera", "hands", "body", "menu" };
+static const char *const kTabNames[] = { "Weapons", "Ammo", "Items", "Monsters", "Clothes", "Cheats", "Graphics", "Camera", "Hands", "Body", "Menu" };
 static const int kNumTabs = sizeof(kTabs) / sizeof(kTabs[0]);
 
 static bool Enhanced(void) { return GetModuleHandleA("xash.dll") != NULL; }
