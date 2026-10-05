@@ -18,6 +18,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
+
+// Cry of Fear's entvars_t has one extra field after light_level (cof\progdefs.h,
+// which build.bat puts first on the include path). Writing with the plain SDK
+// layout lands every field from sequence on 4 bytes early - e.g. spawnflags
+// into groundentity, which crashed the engine.
+static_assert(offsetof(entvars_t, sequence) == 0x12C, "Cry of Fear entvars_t layout");
+static_assert(offsetof(entvars_t, groundentity) == 0x1A0, "Cry of Fear entvars_t layout");
+static_assert(offsetof(entvars_t, flags) == 0x1A8, "Cry of Fear entvars_t layout");
+static_assert(offsetof(entvars_t, euser4) == 0x2A4, "Cry of Fear entvars_t layout");
+static_assert(offsetof(edict_t, v) == 0x80, "edict_t layout");
 
 extern "C" const int g_numExports;
 extern "C" const char *const g_exportNames[];
@@ -132,6 +143,13 @@ static edict_t *Create(const char *classname, const float *origin, float yaw)
 	return e;
 }
 
+// Has the item been taken: removed, hidden, or attached to the player?
+static bool PickedUp(edict_t *e, edict_t *player)
+{
+	return e->free || (e->v.flags & FL_KILLME) || (e->v.effects & EF_NODRAW) ||
+		e->v.owner == player || e->v.aiment == player || e->v.movetype == MOVETYPE_FOLLOW;
+}
+
 static void Give(edict_t *player, const char *classname)
 {
 	if (!StartsWith(classname, "weapon_") && !StartsWith(classname, "ammo_") && !StartsWith(classname, "item_"))
@@ -146,10 +164,13 @@ static void Give(edict_t *player, const char *classname)
 		return;
 	}
 	e->v.spawnflags |= (1 << 30);   // SF_NORESPAWN
-	// Cry of Fear picks most things up with "use"; plain Half-Life items by touch.
-	g_dll.pfnUse(e, player);
-	if (!e->free && !(e->v.flags & FL_KILLME) && !(e->v.effects & EF_NODRAW))
-		g_dll.pfnTouch(e, player);
+	// Pick it up exactly once: touch, like the game's own GiveNamedItem, and "use"
+	// (how Cry of Fear picks up most things) only if the touch left it lying
+	// there. Picking a weapon up twice puts it in the inventory list twice,
+	// which crashes the engine when it's drawn.
+	g_dll.pfnTouch(e, player);
+	if (!PickedUp(e, player))
+		g_dll.pfnUse(e, player);
 	Print(player, "Gave %s", classname + (strchr(classname, '_') ? strchr(classname, '_') - classname + 1 : 0));
 }
 

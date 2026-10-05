@@ -40,6 +40,7 @@ void FpMenu_Init(void);
 void FpMenu_Draw(void);
 int  FpMenu_Key(int down, int keynum);
 void FpMenu_CreateMove(usercmd_t *cmd);
+void FpCrash_Init(void);
 void FpFists_Init(void);
 void FpFists_NewMap(void);
 void FpFists_Frame(void);
@@ -644,6 +645,7 @@ extern "C" int W_Initialize(cl_enginefunc_t *pEnginefuncs, int iVersion)
 {
 	EnsureLoaded();
 	eng = pEnginefuncs;
+	FpCrash_Init();
 	// Hand the client a copy of the engine table with HookUserMsg routed through us.
 	// (A little extra is copied in case this engine build's table is longer.)
 	memcpy(g_clientTable, pEnginefuncs, sizeof(g_clientTable));
