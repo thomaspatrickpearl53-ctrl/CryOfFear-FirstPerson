@@ -8,6 +8,13 @@ A client-side mod for **Cry of Fear** (Steam). It adds:
 
 Singleplayer only. Only `cryoffear\cl_dlls\client.dll` is replaced, and the original is kept. No game files are included in this repository.
 
+## Works with Cry of Fear: Enhanced
+This mod is compatible with [Cry of Fear: Enhanced](https://github.com/hajdawery/cof-enhanced), the community Xash3D engine patch. I tested it with Enhanced 0.4.0-test4.
+- **Install order:** install Enhanced first, then run this mod's `install.bat`.
+- **What works:** the body, camera, weapon motion and every graphics effect, including the flashlight beam, dust and flashlight shadows.
+- **Frame rate:** on Enhanced's engine it ran at a steady ~200 fps with all effects on, against 60–100 on the original engine.
+- **If the flashlight haze looks too strong** in open areas, lower it with `cl_pp_volumetric 0.5`.
+
 ## Showcase
 
 ![Effects switched on and off](docs/media/before_after.gif)
