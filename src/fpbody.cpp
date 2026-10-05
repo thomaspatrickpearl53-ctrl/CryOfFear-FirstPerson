@@ -43,6 +43,7 @@ void FpMenu_CreateMove(usercmd_t *cmd);
 void FpCrash_Init(void);
 void FpFists_Init(void);
 void FpFists_NewMap(void);
+void FpClothes_NewMap(void);
 void FpFists_Prepare(void);
 void FpFists_Frame(void);
 void FpFists_CreateMove(usercmd_t *cmd);
@@ -762,6 +763,7 @@ extern "C" int W_HUD_VidInit(void)
 	ResetFlashlight();      // the server re-sends the flashlight state on spawn
 	FpLight_NewMap();
 	FpFists_NewMap();
+	FpClothes_NewMap();
 	g_loadTried = false;
 	g_bodyVisible = false;
 	g_lastTime = -1.0f;

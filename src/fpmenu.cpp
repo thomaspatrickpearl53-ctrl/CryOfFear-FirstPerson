@@ -26,6 +26,10 @@
 
 extern cl_enginefunc_t *eng;
 cvar_t *FpRegister(const char *name, const char *value, int flags);
+void        FpClothes_Select(int n);
+const void *FpClothes_Part(int costume, int part, unsigned *texId, int *w, int *h, bool *own);
+const char *FpClothes_PartName(int part);
+int         FpClothes_NumParts(void);
 
 // ---------------------------------------------------------------------------
 // Content
@@ -94,7 +98,7 @@ static const Item kClothes[] = {
 	A("Black Metal suit", "setclothes 7"), A("Team Psykskallar hoodie", "setclothes 8"),
 	A("Fuck Anime suit", "setclothes 9"), A("Sick Simon suit", "setclothes 10"),
 	A("AoM Twitcher suit", "setclothes 11"),
-	A("Your own hoodie (models\\costumes\\custom_hoodie.tga)", "setclothes 12 custom_hoodie.tga"),
+	A("Your own hoodie (custom_hoodie.tga)", "setclothes 12 custom_hoodie.tga"),
 };
 // Original engine: this mod's server wrapper (hl.dll).
 static const Item kCheatsGoldSrc[] = {
@@ -260,9 +264,16 @@ void FpMenu_Init(void)
 // Doing things
 // ---------------------------------------------------------------------------
 
+static int s_clothesPick;          // last costume picked, shown when nothing is hovered
+
 static void Send(const char *cmd)
 {
 	char buf[192];
+	if (!strncmp(cmd, "setclothes ", 11))
+	{
+		s_clothesPick = atoi(cmd + 11);
+		FpClothes_Select(s_clothesPick);   // what the game's wardrobe does before sending it
+	}
 	if (!Enhanced())
 		_snprintf(buf, sizeof(buf), "%s\n", cmd);
 	else if (!strncmp(cmd, "fp_give ", 8))
@@ -544,7 +555,10 @@ static void DrawClassic(int charH)
 
 // --- Big (mouse) -------------------------------------------------------------
 
-struct BigLayout { int x, y, w, h, tabW, rowH, listX, listY, rows, closeX, closeY, closeS; };
+// listR: right edge of the item rows (the Clothes page keeps the right part for a preview).
+struct BigLayout { int x, y, w, h, tabW, rowH, listX, listY, listR, rows, closeX, closeY, closeS; };
+
+static bool ClothesPage(void) { return s_page && !strcmp(s_page->id, "clothes"); }
 
 static BigLayout Layout(void)
 {
@@ -561,6 +575,9 @@ static BigLayout Layout(void)
 	L.closeS = L.rowH - 8;
 	L.closeX = L.x + L.w - L.closeS - 10;
 	L.closeY = L.y + 8;
+	L.listR = L.x + L.w - 16;
+	if (ClothesPage())
+		L.listR = L.listX + (L.x + L.w - 16 - L.listX) * 45 / 100;
 	return L;
 }
 
@@ -579,12 +596,90 @@ static int BigHit(int *tab)
 		int t = (cy - (L.y + 12)) / L.rowH;
 		if (t >= 0 && t < kNumTabs) { *tab = t; return -1; }
 	}
-	if (cx >= L.listX && cx < L.x + L.w - 16 && cy >= L.listY)
+	if (cx >= L.listX && cx < L.listR && cy >= L.listY)
 	{
 		int r = (cy - L.listY) / L.rowH;
 		if (r >= 0 && r < L.rows) return r;
 	}
 	return -1;
+}
+
+// Clothes page: the hovered (or last picked) costume's textures, two per row.
+static void DrawClothesPreview(const BigLayout &L, int rowHover, int charH)
+{
+	int idx = (rowHover >= 0 && s_offset + rowHover < s_page->count) ? s_offset + rowHover : -1;
+	if (idx < 0)
+		for (int i = 0; i < s_page->count; i++)
+			if (atoi(s_page->items[i].cmd + 11) == s_clothesPick) { idx = i; break; }
+	if (idx < 0)
+		return;
+	const Item &it = s_page->items[idx];
+	int costume = atoi(it.cmd + 11);
+
+	int px = L.listR + 16, pw = L.x + L.w - 16 - px;
+	int py = L.listY, ph = L.rows * L.rowH;
+	BeginShapes();
+	Rect(px, py, pw, ph, 0, 0, 0, 0.35f);
+	EndShapes();
+	Text(px + 12, py + 8, it.label, 1.0f, 0.75f, 0.45f);
+
+	struct Cell { unsigned tex; int w, h; bool own; int part; } cells[4];
+	int n = 0;
+	for (int p = 0; p < FpClothes_NumParts() && n < 4; p++)
+	{
+		Cell c;
+		if (FpClothes_Part(costume, p, &c.tex, &c.w, &c.h, &c.own))
+		{
+			c.part = p;
+			cells[n++] = c;
+		}
+	}
+	if (!n)
+	{
+		Text(px + 12, py + 16 + charH * 2, "No preview: texture files not found", 0.7f, 0.7f, 0.7f);
+		return;
+	}
+	int gap = 12, top = py + charH + 20, labelH = charH + 8;
+	int cols = n > 1 ? 2 : 1, rowsN = (n + 1) / 2;
+	int cell = (pw - gap * (cols + 1)) / cols;
+	int maxCell = (py + ph - top - rowsN * (labelH + gap)) / rowsN;
+	if (cell > maxCell) cell = maxCell;
+	if (cell < 16)
+		return;
+	int gridW = cols * cell + (cols - 1) * gap;
+	int x0 = px + (pw - gridW) / 2;
+
+	glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_CURRENT_BIT | GL_TEXTURE_BIT);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	glEnable(GL_TEXTURE_2D);
+	glColor4f(1, 1, 1, 1);
+	for (int i = 0; i < n; i++)
+	{
+		int cx = x0 + (i % cols) * (cell + gap), cy = top + (i / cols) * (cell + labelH + gap);
+		// keep the texture's shape inside the square
+		int dw = cell, dh = cell;
+		if (cells[i].w > cells[i].h) dh = cell * cells[i].h / cells[i].w;
+		else if (cells[i].h > cells[i].w) dw = cell * cells[i].w / cells[i].h;
+		int dx = cx + (cell - dw) / 2, dy = cy + (cell - dh) / 2;
+		glBindTexture(GL_TEXTURE_2D, cells[i].tex);
+		glBegin(GL_QUADS);
+		glTexCoord2f(0, 0); glVertex2i(dx, dy);
+		glTexCoord2f(1, 0); glVertex2i(dx + dw, dy);
+		glTexCoord2f(1, 1); glVertex2i(dx + dw, dy + dh);
+		glTexCoord2f(0, 1); glVertex2i(dx, dy + dh);
+		glEnd();
+	}
+	glPopAttrib();
+	for (int i = 0; i < n; i++)
+	{
+		int cx = x0 + (i % cols) * (cell + gap), cy = top + (i / cols) * (cell + labelH + gap);
+		char label[48];
+		_snprintf(label, sizeof(label), cells[i].own || costume == 0 ? "%s" : "%s (normal)", FpClothes_PartName(cells[i].part));
+		label[sizeof(label) - 1] = 0;
+		Text(cx + (cell - TextWidth(label)) / 2, cy + cell + 4, label,
+			cells[i].own || costume == 0 ? 0.92f : 0.55f, cells[i].own || costume == 0 ? 0.92f : 0.55f, cells[i].own || costume == 0 ? 0.92f : 0.55f);
+	}
 }
 
 static void DrawBig(int charH)
@@ -608,7 +703,7 @@ static void DrawBig(int charH)
 	for (int r = 0; r < L.rows && s_offset + r < s_page->count; r++)
 	{
 		int ry = L.listY + r * L.rowH;
-		Rect(L.listX, ry, L.x + L.w - 16 - L.listX, L.rowH - 3, 1, 1, 1, r == rowHover ? 0.14f : 0.04f);
+		Rect(L.listX, ry, L.listR - L.listX, L.rowH - 3, 1, 1, 1, r == rowHover ? 0.14f : 0.04f);
 	}
 	Rect(L.closeX, L.closeY, L.closeS, L.closeS, 0.75f, 0.12f, 0.1f, rowHover == -2 ? 0.95f : 0.55f);
 	if (s_page->count > L.rows)                                                // scroll bar
@@ -641,6 +736,8 @@ static void DrawBig(int charH)
 			Text(L.x + L.w - 30 - TextWidth(shown), ry, shown, 1.0f, 0.75f, 0.45f);
 		}
 	}
+	if (ClothesPage())
+		DrawClothesPreview(L, rowHover, charH);
 	Text(L.listX, L.y + L.h - charH - 8,
 		"Left click: pick / next    Right click: previous    Wheel: scroll    F8 / Esc: close", 0.55f, 0.55f, 0.55f);
 
