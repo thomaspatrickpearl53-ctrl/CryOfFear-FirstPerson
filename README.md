@@ -86,7 +86,7 @@ Your saves and the game's own settings are kept.
 **F8 menu: spawn, cheats and settings**
 - Press **F8** (or type `fp_menu`) for a mouse-driven menu: give yourself any weapon, ammo or item, spawn any monster, switch cheats on and off, and change every mod setting.
 - Cheats on the original engine: god mode, noclip, no target, infinite ammo, full health. On Cry of Fear: Enhanced the menu uses Enhanced's own cheats. See [docs/ENGINES.md](docs/ENGINES.md).
-- **Clothes:** wear any of Cry of Fear's costumes (Leatherhoff, Sick Simon, Twitcher, Hello Kitty...) without unlocking them, or your own `models\costumes\custom_hoodie.tga`. A preview shows each costume's textures.
+- **Clothes:** switch between Cry of Fear's costumes (Leatherhoff, Sick Simon, Twitcher, Hello Kitty...) or your own `models\costumes\custom_hoodie.tga` from anywhere, not just at the game's wardrobe. A preview shows each costume's textures. The game only lets you wear costumes you've unlocked.
 - **Maps:** load any Cry of Fear map. The **Games** button lists the other GoldSrc games in your Steam libraries (Half-Life, Opposing Force, Blue Shift, mods...); tick one and its maps get their own tab. Playing one copies the map and the files it needs that Cry of Fear doesn't have (never overwriting Cry of Fear's own); `remove_everything.bat` deletes them again. Other games' characters and weapons may be missing, since Cry of Fear's game code doesn't have them.
 
 **Source map converter** (`Convert Source Map.bat`)
