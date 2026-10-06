@@ -538,7 +538,11 @@ void FpClothes_Draw3D(int costume, int x, int y, int w, int h, int screenW, int 
 	glShadeModel(GL_SMOOTH);
 	glMatrixMode(GL_TEXTURE); glPushMatrix(); glLoadIdentity();
 	glMatrixMode(GL_MODELVIEW);
-	glClear(GL_DEPTH_BUFFER_BIT);
+	// Depth writes must be on for the clear to do anything (the HUD pass often
+	// has them off), or the map's depth shows through and cuts the model.
+	glDepthMask(GL_TRUE);
+	glClearColor(0.05f, 0.05f, 0.055f, 1.0f);       // solid backdrop: the map doesn't show through
+	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 	glDepthMask(GL_TRUE);

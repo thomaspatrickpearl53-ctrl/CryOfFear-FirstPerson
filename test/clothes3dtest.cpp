@@ -58,6 +58,8 @@ int main(int argc, char **argv)
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		// what GoldSrc's gl_ztrick leaves on every other frame
 		glDepthRange(1.0, 0.5); glDepthFunc(GL_GEQUAL); glClearDepth(0.0); glEnable(GL_DEPTH_TEST);
+		// the map's depth right in front of the camera, and depth writes off, as under the HUD
+		glDepthRange(0.0, 1.0); glClearDepth(0.0); glClear(GL_DEPTH_BUFFER_BIT); glDepthMask(GL_FALSE);
 		FpClothes_Draw3D(costume, 0, 0, W, H, W, H, 1.3f + a * 0.9f);
 		glFinish();
 		std::vector<byte> rgb(W * H * 3);
