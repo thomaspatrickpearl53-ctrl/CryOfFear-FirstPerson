@@ -10,6 +10,7 @@ void FpLog(const char *fmt, ...) { va_list ap; va_start(ap, fmt); vprintf(fmt, a
 bool FpGL_Init(void) { return false; }
 void FpGL_Use(GLuint) {}
 void FpGL_ActiveTexture(int) {}
+GLuint FpGL_NewTexture(void) { static GLuint n = 0x00F00000; while (glIsTexture(n)) n++; return n++; }
 
 static void SaveBmp(const char *path, int w, int h, const std::vector<byte> &rgb)
 {
@@ -55,6 +56,8 @@ int main(int argc, char **argv)
 		glViewport(0, 0, W, H);
 		glClearColor(0.12f, 0.12f, 0.13f, 1);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		// what GoldSrc's gl_ztrick leaves on every other frame
+		glDepthRange(1.0, 0.5); glDepthFunc(GL_GEQUAL); glClearDepth(0.0); glEnable(GL_DEPTH_TEST);
 		FpClothes_Draw3D(costume, 0, 0, W, H, W, H, 1.3f + a * 0.9f);
 		glFinish();
 		std::vector<byte> rgb(W * H * 3);

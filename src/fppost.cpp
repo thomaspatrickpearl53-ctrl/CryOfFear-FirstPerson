@@ -735,6 +735,17 @@ static bool BuildPrograms(void)
 // GL helpers for the other modules (fplight.cpp)
 // ---------------------------------------------------------------------------
 
+// Texture names for the mod's own textures. GoldSrc and Cry of Fear's client
+// number their textures themselves by counting up from 1, without asking OpenGL,
+// so glGenTextures (which hands out the lowest free names) gives names they're
+// about to use - e.g. the costume texture. Take names far above that range.
+GLuint FpGL_NewTexture(void)
+{
+	static GLuint next = 0x00F00000;
+	while (glIsTexture(next)) next++;
+	return next++;
+}
+
 bool FpGL_Init(void)
 {
 	static int state;   // 0 untried, 1 ok, -1 failed
@@ -788,7 +799,7 @@ static int    s_w, s_h;
 static GLuint MakeTex(int w, int h, GLenum internal, GLenum format, GLenum type)
 {
 	GLuint t;
-	glGenTextures(1, &t);
+	t = FpGL_NewTexture();
 	glBindTexture(GL_TEXTURE_2D, t);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

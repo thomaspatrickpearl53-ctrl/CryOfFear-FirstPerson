@@ -49,6 +49,7 @@ void   FpGL_Uniform1i(GLint loc, int v);
 void   FpGL_Uniform3f(GLint loc, float a, float b, float c);
 void   FpGL_UniformMatrix4(GLint loc, const float *m);
 void   FpGL_ActiveTexture(int unit);
+GLuint FpGL_NewTexture(void);
 
 // ---------------------------------------------------------------------------
 // Engine (GL renderer) world structures
@@ -355,7 +356,7 @@ static void MakeCookie(void)
 			unsigned char *p = px + (y * N + x) * 4;
 			p[0] = b; p[1] = b; p[2] = b; p[3] = 255;
 		}
-	glGenTextures(1, &s_cookie);
+	s_cookie = FpGL_NewTexture();
 	glBindTexture(GL_TEXTURE_2D, s_cookie);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -648,7 +649,7 @@ static void MakeDotTexture(void)
 			p[0] = p[1] = p[2] = b;
 			p[3] = 255;
 		}
-	glGenTextures(1, &s_dotTex);
+	s_dotTex = FpGL_NewTexture();
 	glBindTexture(GL_TEXTURE_2D, s_dotTex);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

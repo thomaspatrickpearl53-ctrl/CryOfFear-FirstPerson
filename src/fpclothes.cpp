@@ -34,6 +34,7 @@
 
 void FpLog(const char *fmt, ...);
 bool FpGL_Init(void);
+GLuint FpGL_NewTexture(void);
 void FpGL_Use(GLuint prog);
 void FpGL_ActiveTexture(int unit);
 void FpGameDir(char *out, size_t size);
@@ -155,8 +156,7 @@ static bool ReadFile(const char *rel, std::vector<byte> &out)
 
 static GLuint Upload(const byte *rgba, int w, int h)
 {
-	GLuint id = 0;
-	glGenTextures(1, &id);
+	GLuint id = FpGL_NewTexture();
 	glBindTexture(GL_TEXTURE_2D, id);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -528,6 +528,16 @@ void FpClothes_Draw3D(int costume, int x, int y, int w, int h, int screenW, int 
 	glViewport(gx, gy, gw, gh);
 	glEnable(GL_SCISSOR_TEST);
 	glScissor(gx, gy, gw, gh);
+	// GoldSrc flips its depth range and test every other frame (gl_ztrick) and may
+	// leave other state changed: draw with a plain, normal setup.
+	glDepthRange(0.0, 1.0);
+	glClearDepth(1.0);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glDisable(GL_STENCIL_TEST);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	glShadeModel(GL_SMOOTH);
+	glMatrixMode(GL_TEXTURE); glPushMatrix(); glLoadIdentity();
+	glMatrixMode(GL_MODELVIEW);
 	glClear(GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
@@ -578,6 +588,7 @@ void FpClothes_Draw3D(int costume, int x, int y, int w, int h, int screenW, int 
 		}
 	}
 
+	glMatrixMode(GL_TEXTURE); glPopMatrix();
 	glMatrixMode(GL_PROJECTION); glPopMatrix();
 	glMatrixMode(GL_MODELVIEW); glPopMatrix();
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
