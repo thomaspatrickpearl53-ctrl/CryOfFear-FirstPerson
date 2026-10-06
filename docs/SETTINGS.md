@@ -32,6 +32,8 @@ Type these in the console (`~`). The values shown are the defaults that `install
 | `cl_fpvm_sway` | 1 | inertia sway |
 | `cl_fpvm_breath` | 1 | idle breathing |
 | `cl_fpvm_action` | 1 | sprint/jump/land/fire/reload offsets |
+| `cl_fpbody_anims` | 0 | another character's body animations: 0 Simon's, 1 its own if it has walk/run |
+| `cl_fphands` | 0 | arms on every weapon: 0 Simon, 1 Doctor, 2 Sick Simon |
 | `cl_fpextras` | 0 | F8 menu Extras: the Monsters tab, other games' maps, the Models tab |
 | `cl_fists` | 0 | fists mode: the nightstick becomes bare fists (mouse 1 jab, mouse 2 cross). `fp_fists` toggles it |
 

@@ -44,6 +44,10 @@ void FpMenu_CreateMove(usercmd_t *cmd);
 void FpCrash_Init(void);
 void FpFists_Init(void);
 void FpChars_Init(void);
+void FpHands_Init(void);
+void FpHands_NewMap(void);
+void FpHands_Prepare(void);
+void FpHands_Frame(void);
 float FpChars_AnimsMode(void);
 std::string FpChars_Prepare(const char *src);
 void FpChars_CopyCompanions(const char *srcRel, const char *dstRel);
@@ -757,6 +761,7 @@ extern "C" int W_HUD_Init(void)
 	FpMenu_Init();
 	FpFists_Init();
 	FpChars_Init();
+	FpHands_Init();
 	LoadSettings();
 	eng->pfnClientCmd("exec fpbody.cfg\n");
 	return r;
@@ -781,6 +786,7 @@ extern "C" int W_HUD_VidInit(void)
 	FpFists_NewMap();
 	FpClothes_NewMap();
 	FpProps_NewMap();
+	FpHands_NewMap();
 	g_loadTried = false;
 	g_bodyVisible = false;
 	g_lastTime = -1.0f;
@@ -792,6 +798,7 @@ extern "C" void W_HUD_CreateEntities(void)
 	o_HUD_CreateEntities();
 	FpFists_Prepare();          // loads models before the frame is drawn
 	FpProps_CreateEntities();   // F8 > Models (loads models here too)
+	FpHands_Prepare();          // F8 > Player > Hands (builds weapon copies here)
 	if (!fp_enable || fp_enable->value == 0.0f)
 		return;
 	if (!g_loadTried || _stricmp(g_bodyModelName, fp_model->string) || g_bodyArms != fp_arms->value ||
@@ -809,6 +816,7 @@ extern "C" void W_V_CalcRefdef(ref_params_t *pparams)
 	FpCam_CalcRefdef(pparams);
 	FpLight_Update(pparams);     // after the camera effects: the torch is in the hand
 	FpFists_Frame();             // fists mode: swap the nightstick viewmodel
+	FpHands_Frame();             // other arms on the weapon (after fists)
 	FpProps_CalcRefdef(pparams); // where you're looking, for placing models
 	if (fp_debug && fp_debug->value != 0.0f)
 	{
