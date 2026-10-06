@@ -173,17 +173,26 @@ void FpProps_RemoveAimed(void)
 
 static void Place(model_t *m, const std::string &path)
 {
-	float f[3], end[3], spot[3];
-	Forward(s_ang, f);
-	for (int k = 0; k < 3; k++) end[k] = s_eye[k] + f[k] * 160.0f;
+	// Straight ahead at eye height (the view's pitch doesn't matter), about 2.5 m
+	// out or just short of a wall, then down onto the floor. A trace that starts
+	// inside something (it can, depending on the hull) is ignored rather than
+	// trusted, which used to put the model behind you.
+	float yaw = s_ang[1] * (float)M_PI / 180.0f;
+	float f[3] = { cosf(yaw), sinf(yaw), 0.0f };
+	float reach = 120.0f, dist = 96.0f;
+	float end[3] = { s_eye[0] + f[0] * reach, s_eye[1] + f[1] * reach, s_eye[2] };
 	pmtrace_t *tr = eng->PM_TraceLine ? eng->PM_TraceLine(s_eye, end, PM_STUDIO_BOX, 2, -1) : NULL;
-	float frac = tr ? tr->fraction : 1.0f;
-	for (int k = 0; k < 3; k++) spot[k] = s_eye[k] + f[k] * (160.0f * frac - 24.0f);
-	// down onto the floor
-	float down[3] = { spot[0], spot[1], spot[2] - 512.0f };
+	if (tr && !tr->startsolid && !tr->allsolid && tr->fraction < 1.0f)
+		dist = fmaxf(32.0f, reach * tr->fraction - 24.0f);
+	float spot[3] = { s_eye[0] + f[0] * dist, s_eye[1] + f[1] * dist, s_eye[2] };
+	float down[3] = { spot[0], spot[1], spot[2] - 256.0f };
 	tr = eng->PM_TraceLine ? eng->PM_TraceLine(spot, down, PM_STUDIO_BOX, 2, -1) : NULL;
-	if (tr && tr->fraction < 1.0f)
+	if (tr && !tr->startsolid && !tr->allsolid && tr->fraction < 1.0f)
 		spot[2] = tr->endpos[2];
+	else
+		spot[2] = s_eye[2] - 64.0f;                          // about where your feet are
+	FpLog("models: %s at (%.0f %.0f %.0f), you at (%.0f %.0f %.0f)\n", path.c_str(),
+		spot[0], spot[1], spot[2], s_eye[0], s_eye[1], s_eye[2]);
 
 	std::unique_ptr<Prop> p(new Prop());
 	cl_entity_t &e = p->ent;
