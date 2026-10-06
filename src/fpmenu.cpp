@@ -29,6 +29,11 @@
 
 extern cl_enginefunc_t *eng;
 cvar_t *FpRegister(const char *name, const char *value, int flags);
+void        FpChars_Scan(void);
+int         FpChars_Count(int tab);
+const char *FpChars_Label(int tab, int i);
+std::string FpChars_Pick(int tab, int i);
+void        FpChars_PickSimon(void);
 int         FpProps_NumDirs(void);
 const char *FpProps_DirName(int d);
 int         FpProps_NumModels(int d);
@@ -199,7 +204,7 @@ struct Page { const char *id; const char *title; const Item *items; int count; c
 #define PAGE(id, title, arr, parent) { id, title, arr, (int)(sizeof(arr) / sizeof(arr[0])), parent }
 static const Item kMain[] = {
 	O("Weapons", "weapons"), O("Ammo", "ammo"), O("Items", "items"), O("Monsters", "monsters"),
-	O("Clothes", "clothes"), O("Maps", "maps"), O("Cheats", "cheats"), O("Settings", "settings"),
+	O("Clothes", "clothes"), O("Player", "player"), O("Maps", "maps"), O("Cheats", "cheats"), O("Settings", "settings"),
 };
 static const Page kPages[] = {
 	PAGE("main", "SPAWN MENU", kMain, NULL),
@@ -220,8 +225,8 @@ static const int kNumPages = sizeof(kPages) / sizeof(kPages[0]);
 static const Page kCheatsPageEnhanced = PAGE("cheats", "Cheats (Cry of Fear: Enhanced)", kCheatsEnhanced, "main");
 
 // Tabs of the big menu, in order.
-static const char *const kTabs[] = { "weapons", "ammo", "items", "monsters", "clothes", "maps", "models", "cheats", "graphics", "camera", "hands", "body", "menu" };
-static const char *const kTabNames[] = { "Weapons", "Ammo", "Items", "Monsters", "Clothes", "Maps", "Models", "Cheats", "Graphics", "Camera", "Hands", "Body", "Settings" };
+static const char *const kTabs[] = { "weapons", "ammo", "items", "monsters", "clothes", "player", "maps", "models", "cheats", "graphics", "camera", "hands", "body", "menu" };
+static const char *const kTabNames[] = { "Weapons", "Ammo", "Items", "Monsters", "Clothes", "Player", "Maps", "Models", "Cheats", "Graphics", "Camera", "Hands", "Body", "Settings" };
 static const int kNumTabs = sizeof(kTabs) / sizeof(kTabs[0]);
 
 static bool Enhanced(void) { return GetModuleHandleA("xash.dll") != NULL; }
@@ -338,6 +343,32 @@ static const Page *BuildModelFiles(void)
 	return &s_filesPage;
 }
 
+// --- Player page (fpchars.cpp): characters for the first-person body ---------
+
+static std::vector<Item> s_charItems;
+static Page              s_playerPage;
+static int               s_charTab;          // like the Maps tabs: 0 = Cry of Fear, then ticked games
+
+static int MapTabs(void);
+
+static const Page *BuildPlayer(void)
+{
+	if (s_charTab >= MapTabs()) s_charTab = 0;
+	s_charItems.clear();
+	s_charItems.push_back({ SETTING, "Body animations", "cl_fpbody_anims", "0 1", "Simon's|Their own (if they have them)" });
+	s_charItems.push_back({ ACTION, "Simon (normal)", "fpchar:simon", NULL, NULL });
+	for (int i = 0; i < FpChars_Count(s_charTab); i++)
+	{
+		char cmd[32];
+		_snprintf(cmd, sizeof(cmd), "fpchar:%d", i);
+		s_charItems.push_back({ ACTION, Keep(FpChars_Label(s_charTab, i)), Keep(cmd), NULL, NULL });
+	}
+	const char *cur = eng->pfnGetCvarString ? eng->pfnGetCvarString((char *)"cl_fpbody_simon") : "";
+	std::string title = std::string("Player: your body is ") + (cur && cur[0] ? cur : "Simon");
+	s_playerPage = { "player", Keep(title), s_charItems.data(), (int)s_charItems.size(), "main" };
+	return &s_playerPage;
+}
+
 // Classic menu's first page, without the Extras when they're off.
 static const Page *BuildMain(void)
 {
@@ -364,6 +395,8 @@ static const Page *FindPage(const char *id)
 		return BuildMaps();
 	if (!strcmp(id, "games"))
 		return BuildGames();
+	if (!strcmp(id, "player"))
+		return BuildPlayer();
 	if (!strcmp(id, "models"))
 		return BuildModels();
 	if (!strcmp(id, "modelfiles"))
@@ -389,6 +422,7 @@ static float  s_frozen[3];            // view angles held while the big menu is 
 static bool   s_haveFrozen;
 static int    s_scrW = 1920, s_scrH = 1080;
 
+static bool PlayerPage(void) { return s_page && !strcmp(s_page->id, "player"); }
 static bool MapsPage(void) { return s_page && !strcmp(s_page->id, "maps"); }
 static bool GamesPage(void) { return s_page && !strcmp(s_page->id, "games"); }
 
@@ -448,6 +482,12 @@ static void Send(const char *cmd)
 			s_open = false;
 			eng->pfnClientCmd((char *)(c + "\n").c_str());
 		}
+		return;
+	}
+	if (!strncmp(cmd, "fpchar:", 7))
+	{
+		if (!strcmp(cmd + 7, "simon")) FpChars_PickSimon();
+		else FpChars_Pick(s_charTab, atoi(cmd + 7));
 		return;
 	}
 	if (!strncmp(cmd, "fpdir:", 6))
@@ -626,10 +666,12 @@ int FpMenu_Key(int down, int keynum)
 				if (tab >= 0)
 				{
 					if (!strcmp(kTabs[tab], "maps")) FpMaps_Scan();           // pick up newly added maps
+					if (!strcmp(kTabs[tab], "player")) FpChars_Scan();        // and characters
 					Open(kTabs[tab]);
 				}
 				else if (row == -2) s_open = false;                        // close button
 				else if (row == -3) Open(MapsPage() ? "games" : "maps");   // Games / Done
+				else if (row <= -100 && PlayerPage()) { s_charTab = -100 - row; Open("player"); }
 				else if (row <= -100) { s_mapTab = -100 - row; Open("maps"); }
 				else if (row >= 0 && s_offset + row < s_page->count)
 					Activate(s_page->items[s_offset + row], keynum == K_MOUSE1 ? 1 : -1);
@@ -795,13 +837,14 @@ static BigLayout Layout(void)
 	if (ClothesPage())
 		L.listR = L.listX + (L.x + L.w - 16 - L.listX) * 45 / 100;
 	L.stripY = L.btnY = L.btnW = 0;
-	if ((MapsPage() && Extras()) || GamesPage())             // Games button / tabs are Extras
+	if ((MapsPage() || PlayerPage()) && Extras())              // row of game tabs (an Extra)
 	{
-		if (MapsPage())
-		{
-			L.stripY = L.listY;
-			L.listY += L.rowH + 6;
-		}
+		L.stripY = L.listY;
+		L.listY += L.rowH + 6;
+		L.rows = (L.y + L.h - 16 - L.listY) / L.rowH;
+	}
+	if ((MapsPage() && Extras()) || GamesPage())             // Games / Done button
+	{
 		int helpH = L.rowH;                               // keep the help line clear
 		L.btnY = L.y + L.h - helpH - 8 - L.rowH;
 		L.btnW = 180;
@@ -978,7 +1021,7 @@ static void DrawBig(int charH)
 		{
 			int x0, x1;
 			StripTab(L, t, &x0, &x1);
-			if (t == s_mapTab)            Rect(x0, L.stripY, x1 - x0, L.rowH - 3, 0.55f, 0.1f, 0.08f, 0.85f);
+			if (t == (PlayerPage() ? s_charTab : s_mapTab)) Rect(x0, L.stripY, x1 - x0, L.rowH - 3, 0.55f, 0.1f, 0.08f, 0.85f);
 			else                          Rect(x0, L.stripY, x1 - x0, L.rowH - 3, 1, 1, 1, rowHover == -100 - t ? 0.16f : 0.06f);
 		}
 	if (L.btnY)                                                                // Games / Done

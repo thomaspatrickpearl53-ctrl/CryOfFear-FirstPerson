@@ -293,6 +293,10 @@ const char *FpMaps_Name(int tab, int i)
 	return i >= 0 && i < (int)v.size() ? v[i].c_str() : "";
 }
 
+// Folder of tab's game (NULL for Cry of Fear itself) and its mod folder name.
+const char *FpMaps_TabDir(int tab) { Ensure(); Game *g = TabGame(tab); return g ? g->dir.c_str() : NULL; }
+const char *FpMaps_TabFolder(int tab) { Ensure(); Game *g = TabGame(tab); return g ? g->folder.c_str() : NULL; }
+
 int FpMaps_NumGames(void) { Ensure(); return (int)s_games.size(); }
 const char *FpMaps_GameName(int i) { return i >= 0 && i < (int)s_games.size() ? s_games[i].name.c_str() : ""; }
 int FpMaps_GameMapCount(int i) { return i >= 0 && i < (int)s_games.size() ? (int)s_games[i].maps.size() : 0; }

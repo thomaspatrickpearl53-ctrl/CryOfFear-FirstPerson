@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <string>
 
 #include "mathlib.h"        // vec3_t, VectorCopy
 #include "hud_iface.h"      // cl_enginefunc_t (pulls cdll_int.h)
@@ -42,6 +43,10 @@ int  FpMenu_Key(int down, int keynum);
 void FpMenu_CreateMove(usercmd_t *cmd);
 void FpCrash_Init(void);
 void FpFists_Init(void);
+void FpChars_Init(void);
+float FpChars_AnimsMode(void);
+std::string FpChars_Prepare(const char *src);
+void FpChars_CopyCompanions(const char *srcRel, const char *dstRel);
 void FpFists_NewMap(void);
 void FpClothes_NewMap(void);
 void FpProps_NewMap(void);
@@ -149,6 +154,7 @@ static cl_entity_t  g_body;          // must stay alive: the engine keeps a poin
 static model_t     *g_bodyModel;
 static char         g_bodyModelName[64];   // source model the body was built from
 static float        g_bodyArms;
+static float        g_bodyAnims;      // cl_fpbody_anims the body was built with
 static bool         g_loadTried;
 static bool         g_bodyVisible;
 static bool         g_hideBone[MAXSTUDIOBONES];
@@ -385,9 +391,15 @@ static void LoadBodyModel(void)
 	g_loadTried = true;
 	strncpy(g_bodyModelName, src, sizeof(g_bodyModelName) - 1);
 	g_bodyArms = fp_arms ? fp_arms->value : 0.0f;
+	g_bodyAnims = FpChars_AnimsMode();
 
 	char built[96];
+	// Another character (F8 > Player): with Simon's animations, or its own.
+	std::string prepared = FpChars_Prepare(src);
+	src = prepared.c_str();
 	const char *name = BuildBodyModel(src, built, sizeof(built));
+	if (name)
+		FpChars_CopyCompanions(src, name);      // a separate texture file must follow it
 	if (!name)
 	{
 		Log("fpbody: couldn't build a body from %s, using it unmodified\n", src);
@@ -744,6 +756,7 @@ extern "C" int W_HUD_Init(void)
 	eng->pfnAddCommand("fp_bench", Cmd_Bench);
 	FpMenu_Init();
 	FpFists_Init();
+	FpChars_Init();
 	LoadSettings();
 	eng->pfnClientCmd("exec fpbody.cfg\n");
 	return r;
@@ -781,7 +794,8 @@ extern "C" void W_HUD_CreateEntities(void)
 	FpProps_CreateEntities();   // F8 > Models (loads models here too)
 	if (!fp_enable || fp_enable->value == 0.0f)
 		return;
-	if (!g_loadTried || _stricmp(g_bodyModelName, fp_model->string) || g_bodyArms != fp_arms->value)
+	if (!g_loadTried || _stricmp(g_bodyModelName, fp_model->string) || g_bodyArms != fp_arms->value ||
+		g_bodyAnims != FpChars_AnimsMode())
 		LoadBodyModel();
 	// Visibility comes from the previous V_CalcRefdef (one frame behind is fine).
 	if (g_bodyModel && g_bodyVisible)
