@@ -29,6 +29,15 @@
 
 extern cl_enginefunc_t *eng;
 cvar_t *FpRegister(const char *name, const char *value, int flags);
+int         FpProps_NumDirs(void);
+const char *FpProps_DirName(int d);
+int         FpProps_NumModels(int d);
+const char *FpProps_ModelName(int d, int i);
+int         FpProps_Count(void);
+void        FpProps_Spawn(int d, int i);
+void        FpProps_RemoveLast(void);
+void        FpProps_RemoveAll(void);
+void        FpProps_RemoveAimed(void);
 void        FpMaps_Scan(void);
 int         FpMaps_NumTabs(void);
 const char *FpMaps_TabName(int tab);
@@ -179,10 +188,11 @@ static const Item kBody[] = {
 };
 static const Item kMenu[] = {
 	S("Menu style", "cl_fpmenu_style", "0 1", "Classic (number keys)|Big (mouse)"),
+	S("Extras: monster spawning, other games' maps, placing models", "cl_fpextras", "0 1", "Off|On"),
 };
 static const Item kSettings[] = {
 	O("Graphics", "graphics"), O("Camera and field of view", "camera"), O("Hands and weapon", "hands"),
-	O("Body", "body"), O("Menu style", "menu"),
+	O("Body", "body"), O("Menu style and Extras", "menu"),
 };
 
 struct Page { const char *id; const char *title; const Item *items; int count; const char *parent; };
@@ -204,17 +214,38 @@ static const Page kPages[] = {
 	PAGE("camera", "Camera and field of view", kCamera, "settings"),
 	PAGE("hands", "Hands and weapon", kHands, "settings"),
 	PAGE("body", "Body", kBody, "settings"),
-	PAGE("menu", "Menu style", kMenu, "settings"),
+	PAGE("menu", "Settings", kMenu, "settings"),
 };
 static const int kNumPages = sizeof(kPages) / sizeof(kPages[0]);
 static const Page kCheatsPageEnhanced = PAGE("cheats", "Cheats (Cry of Fear: Enhanced)", kCheatsEnhanced, "main");
 
 // Tabs of the big menu, in order.
-static const char *const kTabs[] = { "weapons", "ammo", "items", "monsters", "clothes", "maps", "cheats", "graphics", "camera", "hands", "body", "menu" };
-static const char *const kTabNames[] = { "Weapons", "Ammo", "Items", "Monsters", "Clothes", "Maps", "Cheats", "Graphics", "Camera", "Hands", "Body", "Menu" };
+static const char *const kTabs[] = { "weapons", "ammo", "items", "monsters", "clothes", "maps", "models", "cheats", "graphics", "camera", "hands", "body", "menu" };
+static const char *const kTabNames[] = { "Weapons", "Ammo", "Items", "Monsters", "Clothes", "Maps", "Models", "Cheats", "Graphics", "Camera", "Hands", "Body", "Settings" };
 static const int kNumTabs = sizeof(kTabs) / sizeof(kTabs[0]);
 
 static bool Enhanced(void) { return GetModuleHandleA("xash.dll") != NULL; }
+
+// Extras (Settings > Extras, cl_fpextras): monster spawning, other games' maps
+// and placing models only show up when it's on.
+static cvar_t *s_extras;
+static bool Extras(void) { return s_extras && s_extras->value != 0.0f; }
+
+static bool TabShown(int t)
+{
+	return Extras() || (strcmp(kTabs[t], "monsters") && strcmp(kTabs[t], "models"));
+}
+
+// Indices of the big menu's tabs that are shown, in order.
+static int ShownTabs(int *out)
+{
+	int n = 0;
+	for (int t = 0; t < kNumTabs; t++)
+		if (TabShown(t)) out[n++] = t;
+	return n;
+}
+
+static int MapTabs(void) { return Extras() ? FpMaps_NumTabs() : 1; }
 
 // --- Maps and Games pages: built from what's installed (fpmaps.cpp) -----------
 
@@ -233,7 +264,7 @@ static bool BigMenu(void);
 
 static const Page *BuildMaps(void)
 {
-	if (s_mapTab >= FpMaps_NumTabs()) s_mapTab = 0;
+	if (s_mapTab >= MapTabs()) s_mapTab = 0;
 	s_mapItems.clear();
 	int n = FpMaps_Count(s_mapTab);
 	for (int i = 0; i < n; i++)
@@ -244,7 +275,7 @@ static const Page *BuildMaps(void)
 	}
 	if (s_mapItems.empty())
 		s_mapItems.push_back({ ACTION, "(no maps found)", "", NULL, NULL });
-	if (!BigMenu())                               // the big menu has a Games button instead
+	if (!BigMenu() && Extras())                   // the big menu has a Games button instead
 		s_mapItems.push_back({ OPEN, "Games...", "games", NULL, NULL });
 	s_mapsPage ={ "maps", "Maps", s_mapItems.data(), (int)s_mapItems.size(), "main" };
 	return &s_mapsPage;
@@ -268,15 +299,75 @@ static const Page *BuildGames(void)
 	return &s_gamesPage;
 }
 
+// --- Models pages (fpprops.cpp): folders, then the models in one folder ----------
+
+static std::vector<Item> s_modelItems, s_fileItems, s_mainItems;
+static Page              s_modelsPage, s_filesPage, s_mainPage;
+static int               s_propDir;
+
+static const Page *BuildModels(void)
+{
+	s_modelItems.clear();
+	char label[96];
+	s_modelItems.push_back({ ACTION, "Remove the model you're looking at", "fpprop:aim", NULL, NULL });
+	s_modelItems.push_back({ ACTION, "Remove the last one placed", "fpprop:last", NULL, NULL });
+	_snprintf(label, sizeof(label), "Remove all placed models (%d)", FpProps_Count());
+	s_modelItems.push_back({ ACTION, Keep(label), "fpprop:all", NULL, NULL });
+	for (int d = 0; d < FpProps_NumDirs(); d++)
+	{
+		char cmd[32];
+		_snprintf(label, sizeof(label), "%s  (%d)  >", FpProps_DirName(d), FpProps_NumModels(d));
+		_snprintf(cmd, sizeof(cmd), "fpdir:%d", d);
+		s_modelItems.push_back({ ACTION, Keep(label), Keep(cmd), NULL, NULL });
+	}
+	s_modelsPage = { "models", "Models: place one in front of you (visual only, not solid)", s_modelItems.data(), (int)s_modelItems.size(), "main" };
+	return &s_modelsPage;
+}
+
+static const Page *BuildModelFiles(void)
+{
+	s_fileItems.clear();
+	s_fileItems.push_back({ OPEN, "<  Back to folders", "models", NULL, NULL });
+	for (int i = 0; i < FpProps_NumModels(s_propDir); i++)
+	{
+		char cmd[32];
+		_snprintf(cmd, sizeof(cmd), "fpprop:%d", i);
+		s_fileItems.push_back({ ACTION, Keep(FpProps_ModelName(s_propDir, i)), Keep(cmd), NULL, NULL });
+	}
+	s_filesPage = { "modelfiles", Keep(std::string("Models: ") + FpProps_DirName(s_propDir)), s_fileItems.data(), (int)s_fileItems.size(), "models" };
+	return &s_filesPage;
+}
+
+// Classic menu's first page, without the Extras when they're off.
+static const Page *BuildMain(void)
+{
+	s_mainItems.clear();
+	for (const Item &it : kMain)
+	{
+		if (!Extras() && !strcmp(it.cmd, "monsters")) continue;
+		s_mainItems.push_back(it);
+		if (Extras() && !strcmp(it.cmd, "maps"))
+			s_mainItems.push_back({ OPEN, "Models", "models", NULL, NULL });
+	}
+	s_mainPage = { "main", "SPAWN MENU", s_mainItems.data(), (int)s_mainItems.size(), NULL };
+	return &s_mainPage;
+}
+
 static bool MapsPage(void);
 static bool GamesPage(void);
 
 static const Page *FindPage(const char *id)
 {
+	if (!strcmp(id, "main"))
+		return BuildMain();
 	if (!strcmp(id, "maps"))
 		return BuildMaps();
 	if (!strcmp(id, "games"))
 		return BuildGames();
+	if (!strcmp(id, "models"))
+		return BuildModels();
+	if (!strcmp(id, "modelfiles"))
+		return BuildModelFiles();
 	if (!strcmp(id, "cheats") && Enhanced())
 		return &kCheatsPageEnhanced;
 	for (int i = 0; i < kNumPages; i++)
@@ -334,6 +425,7 @@ void FpMenu_Init(void)
 {
 	eng->pfnAddCommand("fp_menu", Cmd_Menu);
 	s_bound = FpRegister("cl_fpmenu_bound", "0", FCVAR_ARCHIVE);
+	s_extras = FpRegister("cl_fpextras", "0", FCVAR_ARCHIVE);
 	s_style = FpRegister("cl_fpmenu_style", "1", FCVAR_ARCHIVE);   // 1 = big mouse menu
 }
 
@@ -356,6 +448,28 @@ static void Send(const char *cmd)
 			s_open = false;
 			eng->pfnClientCmd((char *)(c + "\n").c_str());
 		}
+		return;
+	}
+	if (!strncmp(cmd, "fpdir:", 6))
+	{
+		s_propDir = atoi(cmd + 6);
+		s_page = BuildModelFiles();
+		s_offset = 0;
+		return;
+	}
+	if (!strncmp(cmd, "fpprop:", 7))
+	{
+		const char *a = cmd + 7;
+		if (!strcmp(a, "aim")) FpProps_RemoveAimed();
+		else if (!strcmp(a, "last")) FpProps_RemoveLast();
+		else if (!strcmp(a, "all")) FpProps_RemoveAll();
+		else
+		{
+			FpProps_Spawn(s_propDir, atoi(a));
+			s_open = false;                       // close so you can see it
+			return;
+		}
+		if (!strcmp(s_page->id, "models")) s_page = BuildModels();   // refresh the count
 		return;
 	}
 	if (!strncmp(cmd, "fpgame:", 7))
@@ -681,7 +795,7 @@ static BigLayout Layout(void)
 	if (ClothesPage())
 		L.listR = L.listX + (L.x + L.w - 16 - L.listX) * 45 / 100;
 	L.stripY = L.btnY = L.btnW = 0;
-	if (MapsPage() || GamesPage())
+	if ((MapsPage() && Extras()) || GamesPage())             // Games button / tabs are Extras
 	{
 		if (MapsPage())
 		{
@@ -720,13 +834,14 @@ static int BigHit(int *tab)
 		return -2;
 	if (cx >= L.x && cx < L.x + L.tabW && cy >= L.y + 12)
 	{
+		int shown[32], ns = ShownTabs(shown);
 		int t = (cy - (L.y + 12)) / L.rowH;
-		if (t >= 0 && t < kNumTabs) { *tab = t; return -1; }
+		if (t >= 0 && t < ns) { *tab = shown[t]; return -1; }
 	}
 	if (L.btnY && cx >= L.listX && cx < L.listX + L.btnW && cy >= L.btnY && cy < L.btnY + L.rowH - 3)
 		return -3;                                                       // Games / Done
 	if (L.stripY && cy >= L.stripY && cy < L.stripY + L.rowH - 3)
-		for (int t = 0; t < FpMaps_NumTabs(); t++)
+		for (int t = 0; t < MapTabs(); t++)
 		{
 			int x0, x1;
 			StripTab(L, t, &x0, &x1);
@@ -833,10 +948,13 @@ static void DrawBig(int charH)
 	Rect(L.x, L.y, L.w, L.h, 0.03f, 0.03f, 0.035f, 0.88f);                 // panel
 	Rect(L.x, L.y, L.w, 3, 0.75f, 0.12f, 0.1f, 0.95f);                      // accent
 	Rect(L.x, L.y, L.tabW, L.h, 0.0f, 0.0f, 0.0f, 0.35f);                   // tab column
-	for (int t = 0; t < kNumTabs; t++)
+	int shown[32], ns = ShownTabs(shown);
+	for (int i = 0; i < ns; i++)
 	{
-		int ty = L.y + 12 + t * L.rowH;
+		int t = shown[i];
+		int ty = L.y + 12 + i * L.rowH;
 		bool current = !strcmp(s_page->id, kTabs[t]) || (GamesPage() && !strcmp(kTabs[t], "maps")) ||
+			(!strcmp(s_page->id, "modelfiles") && !strcmp(kTabs[t], "models")) ||
 			(!strcmp(kTabs[t], "cheats") && s_page == &kCheatsPageEnhanced);
 		if (current)            Rect(L.x, ty, L.tabW, L.rowH - 2, 0.55f, 0.1f, 0.08f, 0.85f);
 		else if (t == tabHover) Rect(L.x, ty, L.tabW, L.rowH - 2, 1, 1, 1, 0.08f);
@@ -856,7 +974,7 @@ static void DrawBig(int charH)
 		Rect(L.x + L.w - 10, knobY, 4, knobH, 0.75f, 0.12f, 0.1f, 0.9f);
 	}
 	if (L.stripY)                                                              // game tabs
-		for (int t = 0; t < FpMaps_NumTabs(); t++)
+		for (int t = 0; t < MapTabs(); t++)
 		{
 			int x0, x1;
 			StripTab(L, t, &x0, &x1);
@@ -867,7 +985,7 @@ static void DrawBig(int charH)
 		Rect(L.listX, L.btnY, L.btnW, L.rowH - 3, 0.75f, 0.12f, 0.1f, rowHover == -3 ? 0.95f : 0.6f);
 	EndShapes();
 	if (L.stripY)
-		for (int t = 0; t < FpMaps_NumTabs(); t++)
+		for (int t = 0; t < MapTabs(); t++)
 		{
 			int x0, x1;
 			StripTab(L, t, &x0, &x1);
@@ -881,8 +999,8 @@ static void DrawBig(int charH)
 
 	Text(L.listX, L.y + 14, s_page->title, 1.0f, 0.4f, 0.35f);
 	Text(L.closeX + (L.closeS - TextWidth("X")) / 2, L.closeY + (L.closeS - charH) / 2, "X", 1, 1, 1);
-	for (int t = 0; t < kNumTabs; t++)
-		Text(L.x + 16, L.y + 12 + t * L.rowH + textOff, kTabNames[t], 0.92f, 0.92f, 0.92f);
+	for (int i = 0; i < ns; i++)
+		Text(L.x + 16, L.y + 12 + i * L.rowH + textOff, kTabNames[shown[i]], 0.92f, 0.92f, 0.92f);
 	for (int r = 0; r < L.rows && s_offset + r < s_page->count; r++)
 	{
 		const Item &it = s_page->items[s_offset + r];

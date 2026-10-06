@@ -44,6 +44,9 @@ void FpCrash_Init(void);
 void FpFists_Init(void);
 void FpFists_NewMap(void);
 void FpClothes_NewMap(void);
+void FpProps_NewMap(void);
+void FpProps_CreateEntities(void);
+void FpProps_CalcRefdef(ref_params_t *pp);
 void FpFists_Prepare(void);
 void FpFists_Frame(void);
 void FpFists_CreateMove(usercmd_t *cmd);
@@ -764,6 +767,7 @@ extern "C" int W_HUD_VidInit(void)
 	FpLight_NewMap();
 	FpFists_NewMap();
 	FpClothes_NewMap();
+	FpProps_NewMap();
 	g_loadTried = false;
 	g_bodyVisible = false;
 	g_lastTime = -1.0f;
@@ -774,6 +778,7 @@ extern "C" void W_HUD_CreateEntities(void)
 {
 	o_HUD_CreateEntities();
 	FpFists_Prepare();          // loads models before the frame is drawn
+	FpProps_CreateEntities();   // F8 > Models (loads models here too)
 	if (!fp_enable || fp_enable->value == 0.0f)
 		return;
 	if (!g_loadTried || _stricmp(g_bodyModelName, fp_model->string) || g_bodyArms != fp_arms->value)
@@ -790,6 +795,7 @@ extern "C" void W_V_CalcRefdef(ref_params_t *pparams)
 	FpCam_CalcRefdef(pparams);
 	FpLight_Update(pparams);     // after the camera effects: the torch is in the hand
 	FpFists_Frame();             // fists mode: swap the nightstick viewmodel
+	FpProps_CalcRefdef(pparams); // where you're looking, for placing models
 	if (fp_debug && fp_debug->value != 0.0f)
 	{
 		static float next;
