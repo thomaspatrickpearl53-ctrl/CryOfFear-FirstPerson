@@ -44,6 +44,8 @@ This mod is compatible with [Cry of Fear: Enhanced](https://github.com/hajdawery
 
 `install.bat` also works from anywhere if Cry of Fear is in the default Steam folder. You can also pass the path: `install.bat "D:\SteamLibrary\steamapps\common\Cry of Fear"`.
 
+**Linux / Steam Deck:** run the game with Proton, then `./install.sh` from the mod folder. It also applies the Wine/Proton graphics fix. See [docs/ENGINES.md](docs/ENGINES.md#linux-and-steam-deck-proton).
+
 **Uninstall:** run `uninstall.bat`, or use Steam → *Verify integrity of game files*. This keeps your mod settings in case you reinstall.
 
 **Remove everything:** `remove_everything.bat` restores the original `client.dll` and also deletes:

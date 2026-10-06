@@ -49,5 +49,17 @@ Steam puts back the original `client.dll` (and `hl.dll`). Run **`install.bat`** 
 - **Detecting Enhanced:** `install.bat` looks for `xash.dll` in the game folder. Enhanced's uninstaller leaves its `cof-enhanced` folder behind, and that alone doesn't count.
 - **A second copy of the game** (for example one engine in Steam's folder and the other elsewhere): Steam and `cof.exe` always start the copy in Steam's library. Start the other copy with its own `Play Modded.bat`.
 
+## Linux and Steam Deck (Proton)
+Cry of Fear is a Windows game; on Linux it runs through Steam's **Proton** (Properties → Compatibility → force a Proton version). The mod runs inside it like the game's own DLLs.
+
+1. Extract the `CoF-FirstPerson` folder anywhere (inside the Cry of Fear folder is easiest).
+2. In a terminal in that folder: `chmod +x *.sh && ./install.sh`
+   It finds the game in your Steam libraries (normal, Flatpak, Snap and SD-card libraries), or pass the folder: `./install.sh "/path/to/Cry of Fear"`.
+3. Start Cry of Fear from Steam.
+
+`install.sh` also applies the **Wine/Proton graphics fix** on the original engine. Cry of Fear's own `opengl32.dll` (its renderer wrapper) clashes with Wine's, and gives up on drivers that lack an old function. The fix uses it as `opengp32.dll` with that check skipped, and points the engine and client at it. It's the same 14-byte change as the community "CoF fix" zip, made to your own files by `tools/cof_glfix.py` (Python 3), which checks every file before and after. `--no-glfix` skips it; `python3 tools/cof_glfix.py "<game>" --undo` undoes it. The mod draws with whichever renderer the engine loaded.
+
+`./uninstall.sh` and `./remove_everything.sh` work like their `.bat` versions (`remove_everything.sh` also undoes the graphics fix). The Source map converter needs the Half-Life SDK's Windows compilers, so it's Windows only for now.
+
 ## Removing everything
 `remove_everything.bat` works on both engines. It restores the original `client.dll` and `hl.dll` and deletes the mod's settings, but doesn't touch Cry of Fear: Enhanced. Use Enhanced's own uninstaller for that.
