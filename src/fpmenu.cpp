@@ -17,6 +17,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <deque>
+#include <string>
+#include <vector>
 
 #include "mathlib.h"
 #include "hud_iface.h"
@@ -26,6 +29,17 @@
 
 extern cl_enginefunc_t *eng;
 cvar_t *FpRegister(const char *name, const char *value, int flags);
+void        FpMaps_Scan(void);
+int         FpMaps_NumTabs(void);
+const char *FpMaps_TabName(int tab);
+int         FpMaps_Count(int tab);
+const char *FpMaps_Name(int tab, int i);
+int         FpMaps_NumGames(void);
+const char *FpMaps_GameName(int i);
+int         FpMaps_GameMapCount(int i);
+bool        FpMaps_GameOn(int i);
+void        FpMaps_ToggleGame(int i);
+std::string FpMaps_Load(int tab, int i);
 void        FpClothes_Select(int n);
 const void *FpClothes_Part(int costume, int part, unsigned *texId, int *w, int *h, bool *own);
 const char *FpClothes_PartName(int part);
@@ -174,7 +188,7 @@ struct Page { const char *id; const char *title; const Item *items; int count; c
 #define PAGE(id, title, arr, parent) { id, title, arr, (int)(sizeof(arr) / sizeof(arr[0])), parent }
 static const Item kMain[] = {
 	O("Weapons", "weapons"), O("Ammo", "ammo"), O("Items", "items"), O("Monsters", "monsters"),
-	O("Clothes", "clothes"), O("Cheats", "cheats"), O("Settings", "settings"),
+	O("Clothes", "clothes"), O("Maps", "maps"), O("Cheats", "cheats"), O("Settings", "settings"),
 };
 static const Page kPages[] = {
 	PAGE("main", "SPAWN MENU", kMain, NULL),
@@ -195,14 +209,73 @@ static const int kNumPages = sizeof(kPages) / sizeof(kPages[0]);
 static const Page kCheatsPageEnhanced = PAGE("cheats", "Cheats (Cry of Fear: Enhanced)", kCheatsEnhanced, "main");
 
 // Tabs of the big menu, in order.
-static const char *const kTabs[] = { "weapons", "ammo", "items", "monsters", "clothes", "cheats", "graphics", "camera", "hands", "body", "menu" };
-static const char *const kTabNames[] = { "Weapons", "Ammo", "Items", "Monsters", "Clothes", "Cheats", "Graphics", "Camera", "Hands", "Body", "Menu" };
+static const char *const kTabs[] = { "weapons", "ammo", "items", "monsters", "clothes", "maps", "cheats", "graphics", "camera", "hands", "body", "menu" };
+static const char *const kTabNames[] = { "Weapons", "Ammo", "Items", "Monsters", "Clothes", "Maps", "Cheats", "Graphics", "Camera", "Hands", "Body", "Menu" };
 static const int kNumTabs = sizeof(kTabs) / sizeof(kTabs[0]);
 
 static bool Enhanced(void) { return GetModuleHandleA("xash.dll") != NULL; }
 
+// --- Maps and Games pages: built from what's installed (fpmaps.cpp) -----------
+
+static std::deque<std::string> s_dynText;          // labels/commands of the built pages
+static std::vector<Item>       s_mapItems, s_gameItems;
+static Page                    s_mapsPage, s_gamesPage;
+static int                     s_mapTab;           // 0 = Cry of Fear, then the switched-on games
+
+static const char *Keep(const std::string &s)
+{
+	s_dynText.push_back(s);
+	return s_dynText.back().c_str();
+}
+
+static bool BigMenu(void);
+
+static const Page *BuildMaps(void)
+{
+	if (s_mapTab >= FpMaps_NumTabs()) s_mapTab = 0;
+	s_mapItems.clear();
+	int n = FpMaps_Count(s_mapTab);
+	for (int i = 0; i < n; i++)
+	{
+		char cmd[32];
+		_snprintf(cmd, sizeof(cmd), "fpmap:%d", i);
+		s_mapItems.push_back({ ACTION, Keep(FpMaps_Name(s_mapTab, i)), Keep(cmd), NULL, NULL });
+	}
+	if (s_mapItems.empty())
+		s_mapItems.push_back({ ACTION, "(no maps found)", "", NULL, NULL });
+	if (!BigMenu())                               // the big menu has a Games button instead
+		s_mapItems.push_back({ OPEN, "Games...", "games", NULL, NULL });
+	s_mapsPage ={ "maps", "Maps", s_mapItems.data(), (int)s_mapItems.size(), "main" };
+	return &s_mapsPage;
+}
+
+static const Page *BuildGames(void)
+{
+	s_gameItems.clear();
+	int n = FpMaps_NumGames();
+	for (int i = 0; i < n; i++)
+	{
+		char label[200], cmd[32];
+		_snprintf(label, sizeof(label), "[%s]  %s   (%d maps)", FpMaps_GameOn(i) ? "x" : "  ", FpMaps_GameName(i), FpMaps_GameMapCount(i));
+		label[sizeof(label) - 1] = 0;
+		_snprintf(cmd, sizeof(cmd), "fpgame:%d", i);
+		s_gameItems.push_back({ ACTION, Keep(label), Keep(cmd), NULL, NULL });
+	}
+	if (s_gameItems.empty())
+		s_gameItems.push_back({ ACTION, "(no other GoldSrc games found in your Steam libraries)", "", NULL, NULL });
+	s_gamesPage = { "games", "Games: tick the ones whose maps you want under Maps", s_gameItems.data(), (int)s_gameItems.size(), "maps" };
+	return &s_gamesPage;
+}
+
+static bool MapsPage(void);
+static bool GamesPage(void);
+
 static const Page *FindPage(const char *id)
 {
+	if (!strcmp(id, "maps"))
+		return BuildMaps();
+	if (!strcmp(id, "games"))
+		return BuildGames();
 	if (!strcmp(id, "cheats") && Enhanced())
 		return &kCheatsPageEnhanced;
 	for (int i = 0; i < kNumPages; i++)
@@ -223,6 +296,9 @@ static float  s_cursorX, s_cursorY;   // big menu cursor (pixels)
 static float  s_frozen[3];            // view angles held while the big menu is open
 static bool   s_haveFrozen;
 static int    s_scrW = 1920, s_scrH = 1080;
+
+static bool MapsPage(void) { return s_page && !strcmp(s_page->id, "maps"); }
+static bool GamesPage(void) { return s_page && !strcmp(s_page->id, "games"); }
 
 static struct { const char *name; bool on; } s_toggles[8];
 
@@ -269,6 +345,24 @@ static int s_clothesPick;          // last costume picked, shown when nothing is
 static void Send(const char *cmd)
 {
 	char buf[192];
+	if (!cmd[0])
+		return;
+	if (!strncmp(cmd, "fpmap:", 6))
+	{
+		std::string c = FpMaps_Load(s_mapTab, atoi(cmd + 6));
+		if (!c.empty())
+		{
+			s_open = false;
+			eng->pfnClientCmd((char *)(c + "\n").c_str());
+		}
+		return;
+	}
+	if (!strncmp(cmd, "fpgame:", 7))
+	{
+		FpMaps_ToggleGame(atoi(cmd + 7));
+		s_page = BuildGames();
+		return;
+	}
 	if (!strncmp(cmd, "setclothes ", 11))
 	{
 		s_clothesPick = atoi(cmd + 11);
@@ -414,8 +508,14 @@ int FpMenu_Key(int down, int keynum)
 			{
 				int tab = -1;
 				int row = BigHit(&tab);
-				if (tab >= 0) Open(kTabs[tab]);
+				if (tab >= 0)
+				{
+					if (!strcmp(kTabs[tab], "maps")) FpMaps_Scan();           // pick up newly added maps
+					Open(kTabs[tab]);
+				}
 				else if (row == -2) s_open = false;                        // close button
+				else if (row == -3) Open(MapsPage() ? "games" : "maps");   // Games / Done
+				else if (row <= -100) { s_mapTab = -100 - row; Open("maps"); }
 				else if (row >= 0 && s_offset + row < s_page->count)
 					Activate(s_page->items[s_offset + row], keynum == K_MOUSE1 ? 1 : -1);
 			}
@@ -556,7 +656,8 @@ static void DrawClassic(int charH)
 // --- Big (mouse) -------------------------------------------------------------
 
 // listR: right edge of the item rows (the Clothes page keeps the right part for a preview).
-struct BigLayout { int x, y, w, h, tabW, rowH, listX, listY, listR, rows, closeX, closeY, closeS; };
+// stripY: Maps page's row of game tabs; btnY: the Games / Done button (0 = none).
+struct BigLayout { int x, y, w, h, tabW, rowH, listX, listY, listR, rows, closeX, closeY, closeS, stripY, btnY, btnW; };
 
 static bool ClothesPage(void) { return s_page && !strcmp(s_page->id, "clothes"); }
 
@@ -578,7 +679,32 @@ static BigLayout Layout(void)
 	L.listR = L.x + L.w - 16;
 	if (ClothesPage())
 		L.listR = L.listX + (L.x + L.w - 16 - L.listX) * 45 / 100;
+	L.stripY = L.btnY = L.btnW = 0;
+	if (MapsPage() || GamesPage())
+	{
+		if (MapsPage())
+		{
+			L.stripY = L.listY;
+			L.listY += L.rowH + 6;
+		}
+		int helpH = L.rowH;                               // keep the help line clear
+		L.btnY = L.y + L.h - helpH - 8 - L.rowH;
+		L.btnW = 180;
+		L.rows = (L.btnY - 6 - L.listY) / L.rowH;
+	}
 	return L;
+}
+
+// Maps page: x extent of game tab t in the strip.
+static void StripTab(const BigLayout &L, int t, int *x0, int *x1)
+{
+	int x = L.listX;
+	for (int i = 0; i <= t; i++)
+	{
+		int w = TextWidth(FpMaps_TabName(i)) + 28;
+		if (i == t) { *x0 = x; *x1 = x + w; return; }
+		x += w + 6;
+	}
 }
 
 static int BigRows(void) { return Layout().rows; }
@@ -596,6 +722,15 @@ static int BigHit(int *tab)
 		int t = (cy - (L.y + 12)) / L.rowH;
 		if (t >= 0 && t < kNumTabs) { *tab = t; return -1; }
 	}
+	if (L.btnY && cx >= L.listX && cx < L.listX + L.btnW && cy >= L.btnY && cy < L.btnY + L.rowH - 3)
+		return -3;                                                       // Games / Done
+	if (L.stripY && cy >= L.stripY && cy < L.stripY + L.rowH - 3)
+		for (int t = 0; t < FpMaps_NumTabs(); t++)
+		{
+			int x0, x1;
+			StripTab(L, t, &x0, &x1);
+			if (cx >= x0 && cx < x1) return -100 - t;                    // game tab
+		}
 	if (cx >= L.listX && cx < L.listR && cy >= L.listY)
 	{
 		int r = (cy - L.listY) / L.rowH;
@@ -696,7 +831,8 @@ static void DrawBig(int charH)
 	for (int t = 0; t < kNumTabs; t++)
 	{
 		int ty = L.y + 12 + t * L.rowH;
-		bool current = s_page == FindPage(kTabs[t]);
+		bool current = !strcmp(s_page->id, kTabs[t]) || (GamesPage() && !strcmp(kTabs[t], "maps")) ||
+			(!strcmp(kTabs[t], "cheats") && s_page == &kCheatsPageEnhanced);
 		if (current)            Rect(L.x, ty, L.tabW, L.rowH - 2, 0.55f, 0.1f, 0.08f, 0.85f);
 		else if (t == tabHover) Rect(L.x, ty, L.tabW, L.rowH - 2, 1, 1, 1, 0.08f);
 	}
@@ -714,7 +850,29 @@ static void DrawBig(int charH)
 		Rect(L.x + L.w - 10, L.listY, 4, barH, 1, 1, 1, 0.08f);
 		Rect(L.x + L.w - 10, knobY, 4, knobH, 0.75f, 0.12f, 0.1f, 0.9f);
 	}
+	if (L.stripY)                                                              // game tabs
+		for (int t = 0; t < FpMaps_NumTabs(); t++)
+		{
+			int x0, x1;
+			StripTab(L, t, &x0, &x1);
+			if (t == s_mapTab)            Rect(x0, L.stripY, x1 - x0, L.rowH - 3, 0.55f, 0.1f, 0.08f, 0.85f);
+			else                          Rect(x0, L.stripY, x1 - x0, L.rowH - 3, 1, 1, 1, rowHover == -100 - t ? 0.16f : 0.06f);
+		}
+	if (L.btnY)                                                                // Games / Done
+		Rect(L.listX, L.btnY, L.btnW, L.rowH - 3, 0.75f, 0.12f, 0.1f, rowHover == -3 ? 0.95f : 0.6f);
 	EndShapes();
+	if (L.stripY)
+		for (int t = 0; t < FpMaps_NumTabs(); t++)
+		{
+			int x0, x1;
+			StripTab(L, t, &x0, &x1);
+			Text(x0 + 14, L.stripY + textOff, FpMaps_TabName(t), 0.95f, 0.95f, 0.95f);
+		}
+	if (L.btnY)
+	{
+		const char *b = MapsPage() ? "Games" : "Done";
+		Text(L.listX + (L.btnW - TextWidth(b)) / 2, L.btnY + textOff, b, 1, 1, 1);
+	}
 
 	Text(L.listX, L.y + 14, s_page->title, 1.0f, 0.4f, 0.35f);
 	Text(L.closeX + (L.closeS - TextWidth("X")) / 2, L.closeY + (L.closeS - charH) / 2, "X", 1, 1, 1);

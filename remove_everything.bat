@@ -54,6 +54,14 @@ for %%F in (fpbody.cfg fpbody.cfg.bak fpbody.log fpcheats.cfg) do if exist "%CF%
 if exist "%CF%\models\fpbody" rd /s /q "%CF%\models\fpbody"
 echo  - mod settings, log and generated body model deleted
 
+rem 2b. Maps (and the files they use) copied in from other games by the F8 Maps tab
+if exist "%CF%\fpmaps_installed.txt" (
+  for /f "usebackq delims=" %%L in ("%CF%\fpmaps_installed.txt") do if exist "%CF%\%%L" del /q "%CF%\%%L"
+  del /q "%CF%\fpmaps_installed.txt"
+  echo  - maps copied in from other games removed
+)
+if exist "%CF%\fpmaps_games.txt" del /q "%CF%\fpmaps_games.txt"
+
 rem 3. The mod's lines in the game's config files (the game has no cl_fp* / cl_pp* settings of its own)
 for %%C in ("%GAME%\config.cfg" "%CF%\config.cfg") do (
   if exist "%%~C" (
