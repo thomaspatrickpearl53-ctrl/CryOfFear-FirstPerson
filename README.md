@@ -84,6 +84,14 @@ Your saves and the game's own settings are kept.
 **F8 menu: spawn, cheats and settings**
 - Press **F8** (or type `fp_menu`) for a mouse-driven menu: give yourself any weapon, ammo or item, spawn any monster, switch cheats on and off, and change every mod setting.
 - Cheats on the original engine: god mode, noclip, no target, infinite ammo, full health. On Cry of Fear: Enhanced the menu uses Enhanced's own cheats. See [docs/ENGINES.md](docs/ENGINES.md).
+- **Clothes:** wear any of Cry of Fear's costumes (Leatherhoff, Sick Simon, Twitcher, Hello Kitty...) without unlocking them, or your own `models\costumes\custom_hoodie.tga`. A preview shows each costume's textures.
+- **Maps:** load any Cry of Fear map. The **Games** button lists the other GoldSrc games in your Steam libraries (Half-Life, Opposing Force, Blue Shift, mods...); tick one and its maps get their own tab. Playing one copies the map and the files it needs that Cry of Fear doesn't have (never overwriting Cry of Fear's own); `remove_everything.bat` deletes them again. Other games' characters and weapons may be missing, since Cry of Fear's game code doesn't have them.
+
+**Source map converter** (`Convert Source Map.bat`)
+- Drag a Source engine map (`.bsp` from Half-Life 2, Counter-Strike: Source, Half-Life: Source...) onto it, and it becomes a Cry of Fear map named `s_<name>`, ready under Maps.
+- Needs Python (with numpy and Pillow) and the free **Half-Life SDK** from Steam (its map compilers). The map must still be in its game's `maps` folder so its textures can be found.
+- Works best on small, mostly-brush maps. Props and displacement terrain aren't converted, Source's inputs/outputs are dropped, textures drop to 256 colours, and maps bigger than GoldSrc's 8192-unit world don't fit. Very big maps compile without lighting (full-bright).
+- Everything is built on your PC from your own game files; nothing from other games ships with this mod.
 
 **Graphics** (GLSL, about 3 ms per frame at 1080p on an RTX 3050)
 - **Lighting and shadows:** ambient occlusion, contact shadows and bounce light.
