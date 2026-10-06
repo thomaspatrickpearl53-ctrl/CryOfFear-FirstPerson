@@ -44,6 +44,7 @@ void        FpClothes_Select(int n);
 const void *FpClothes_Part(int costume, int part, unsigned *texId, int *w, int *h, bool *own);
 const char *FpClothes_PartName(int part);
 int         FpClothes_NumParts(void);
+void        FpClothes_Draw3D(int costume, int x, int y, int w, int h, int screenW, int screenH, float time);
 
 // ---------------------------------------------------------------------------
 // Content
@@ -739,7 +740,7 @@ static int BigHit(int *tab)
 	return -1;
 }
 
-// Clothes page: the hovered (or last picked) costume's textures, two per row.
+// Clothes page: Simon wearing the hovered (or last picked) costume, and its textures.
 static void DrawClothesPreview(const BigLayout &L, int rowHover, int charH)
 {
 	int idx = (rowHover >= 0 && s_offset + rowHover < s_page->count) ? s_offset + rowHover : -1;
@@ -774,13 +775,17 @@ static void DrawClothesPreview(const BigLayout &L, int rowHover, int charH)
 		Text(px + 12, py + 16 + charH * 2, "No preview: texture files not found", 0.7f, 0.7f, 0.7f);
 		return;
 	}
+	// Simon in the costume on top, the costume's textures in one small row below.
 	int gap = 12, top = py + charH + 20, labelH = charH + 8;
-	int cols = n > 1 ? 2 : 1, rowsN = (n + 1) / 2;
+	int cols = n, rowsN = 1;
 	int cell = (pw - gap * (cols + 1)) / cols;
-	int maxCell = (py + ph - top - rowsN * (labelH + gap)) / rowsN;
+	int maxCell = ph * 22 / 100;
 	if (cell > maxCell) cell = maxCell;
 	if (cell < 16)
 		return;
+	int swatchY = py + ph - gap - labelH - cell;
+	FpClothes_Draw3D(costume, px + 8, top, pw - 16, swatchY - gap - top, s_scrW, s_scrH, eng->GetClientTime());
+	top = swatchY;
 	int gridW = cols * cell + (cols - 1) * gap;
 	int x0 = px + (pw - gridW) / 2;
 
