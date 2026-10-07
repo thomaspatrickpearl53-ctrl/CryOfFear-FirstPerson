@@ -21,6 +21,8 @@ This mod is compatible with [Cry of Fear: Enhanced](https://github.com/hajdawery
 
 ![Shaders off vs shaders on](docs/media/shaders_before_after.jpg)
 
+![The F8 menu: Player tab with the 3D character preview and other games' tabs](docs/media/f8_menu.png)
+
 <table>
   <tr>
     <td><img src="docs/media/flashlight.gif" alt="Volumetric flashlight beam"></td>
@@ -32,7 +34,19 @@ This mod is compatible with [Cry of Fear: Enhanced](https://github.com/hajdawery
   </tr>
   <tr>
     <td><img src="docs/media/aim.gif" alt="Aiming: zoom and focus blur"></td>
-    <td></td>
+    <td><img src="docs/media/turn_in_place.gif" alt="Turn in place: the feet stay planted, then step round"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/player_preview.gif" alt="Player tab: 3D preview of the character under the cursor, then playing as the doctor"></td>
+    <td><img src="docs/media/other_game_character.gif" alt="Playing as Gordon Freeman from Half-Life, with Simon's animations on his skeleton"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/clothes.gif" alt="Clothes tab: 3D preview of each costume, then wearing the Hello Kitty suit"></td>
+    <td><img src="docs/media/other_game_maps.gif" alt="Maps tab: loading a Half-Life map and playing it as Simon"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/models.gif" alt="Models tab: placing one of Cry of Fear's models in front of you"></td>
+    <td><img src="docs/media/f8_settings.png" alt="F8 menu settings: menu style and the Extras switch"></td>
   </tr>
 </table>
 
@@ -87,7 +101,7 @@ Your saves and the game's own settings are kept.
 - Press **F8** (or type `fp_menu`) for a mouse-driven menu: give yourself any weapon, ammo or item, spawn any monster, switch cheats on and off, and change every mod setting.
 - Cheats on the original engine: god mode, noclip, no target, infinite ammo, full health. On Cry of Fear: Enhanced the menu uses Enhanced's own cheats. See [docs/ENGINES.md](docs/ENGINES.md).
 - **Clothes:** switch between Cry of Fear's costumes (Leatherhoff, Sick Simon, Twitcher, Hello Kitty...) or your own `models\costumes\custom_hoodie.tga` from anywhere, not just at the game's wardrobe. A preview shows each costume's textures. The game only lets you wear costumes you've unlocked.
-- **Extras** (F8 → Settings → Extras, off by default) adds the Monsters tab, other games' maps under Maps, and a **Models** tab: place any of Cry of Fear's models in front of you and remove them again (visual only, not solid; cleared on map change).
+- **Extras** (F8 → Settings → Extras, off by default) adds the Monsters tab, other games' maps under Maps, a **Models** tab: place any of Cry of Fear's models in front of you and remove them again (visual only, not solid; cleared on map change), and a **Player** tab: be any character with Simon's kind of skeleton in first person (Sophie, Book Simon, the crazy woman... and those of the games ticked under Maps > Games), with a turning 3D preview of the one under the cursor. **Body animations:** Simon's (moved onto their skeleton) or their own when they have them.
 - **Maps:** load any Cry of Fear map. With Extras on, the **Games** button lists the other GoldSrc games in your Steam libraries (Half-Life, Opposing Force, Blue Shift, mods...); tick one and its maps get their own tab. Playing one copies the map and the files it needs that Cry of Fear doesn't have (never overwriting Cry of Fear's own); `remove_everything.bat` deletes them again. Other games' characters and weapons may be missing, since Cry of Fear's game code doesn't have them.
 
 **Source map converter** (`Convert Source Map.bat`)
