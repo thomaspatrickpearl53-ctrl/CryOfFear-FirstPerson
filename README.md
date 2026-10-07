@@ -98,7 +98,7 @@ Your saves and the game's own settings are kept.
 - The fists model is built on your PC from your own game files.
 
 **F8 menu: spawn, cheats and settings**
-- Press **F8** (or type `fp_menu`) for a mouse-driven menu: give yourself any weapon, ammo or item, spawn any monster, switch cheats on and off, and change every mod setting.
+- Press **F8** (or type `fp_menu`), or on a controller / **Steam Deck** press both sticks in (L3 + R3), for a menu you can use with the mouse, the controller or the arrow keys: give yourself any weapon, ammo or item, spawn any monster, switch cheats on and off, and change every mod setting.
 - Cheats on the original engine: god mode, noclip, no target, infinite ammo, full health. On Cry of Fear: Enhanced the menu uses Enhanced's own cheats. See [docs/ENGINES.md](docs/ENGINES.md).
 - **Clothes:** switch between Cry of Fear's costumes (Leatherhoff, Sick Simon, Twitcher, Hello Kitty...) or your own `models\costumes\custom_hoodie.tga` from anywhere, not just at the game's wardrobe. A preview shows each costume's textures. The game only lets you wear costumes you've unlocked.
 - **Extras** (F8 → Settings → Extras, off by default) adds the Monsters tab, other games' maps under Maps, a **Models** tab: place any of Cry of Fear's models in front of you and remove them again (visual only, not solid; cleared on map change), and a **Player** tab: be any character with Simon's kind of skeleton in first person (Sophie, Book Simon, the crazy woman... and those of the games ticked under Maps > Games), with a turning 3D preview of the one under the cursor. **Body animations:** Simon's (moved onto their skeleton) or their own when they have them.

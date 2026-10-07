@@ -7,6 +7,12 @@
 //            (FpMenu_CreateMove), so it works on any engine. Left click picks /
 //            steps a setting up, right click steps it down, the wheel scrolls.
 //
+// Controller (Steam Deck, Xbox pads; fppad.cpp) and keyboard: L3 + R3 (both
+// sticks pressed in) opens and closes it. D-pad / left stick or the arrow keys
+// move the highlighted row, A / Enter picks, X steps a setting down, left/right
+// step settings, B / Backspace goes back, LB / RB (Tab) switch tabs, LT / RT the
+// game tabs on Maps and Player, Y the Games / Done button.
+//
 // Spawning and cheats go to the server: this mod's hl.dll on the original
 // engine (fp_give, fp_spawn, fp_god, ...), Cry of Fear: Enhanced's own cheats
 // when running on its engine (give, ent_create, cof_nodamage, ...).
@@ -36,6 +42,8 @@ std::string FpChars_Pick(int tab, int i);
 void        FpChars_PickSimon(void);
 std::string FpChars_Path(int tab, int i);
 const char *FpChars_Simon(void);
+struct PadEvents { bool up, down, left, right, a, b, x, y, lb, rb, lt, rt, start, toggle, any; };
+bool        FpPad_Poll(float now, PadEvents *ev);
 bool        FpPreview_Draw3D(const char *path, int x, int y, int w, int h, int screenW, int screenH, float time);
 int         FpProps_NumDirs(void);
 const char *FpProps_DirName(int d);
@@ -147,7 +155,14 @@ static const Item kCheatsEnhanced[] = {
 };
 
 #define OFF_LOW_MED_HIGH "Off|Low|Medium|High"
+// Lighter effects for the Steam Deck (applied once by itself on a Deck), and the defaults back.
+#define DECK_PRESET "cl_pp_ssao 0.3; cl_pp_contact 0; cl_pp_gi 0; cl_pp_shafts 0.35; cl_pp_volumetric 0.5; cl_pp_flashshadows 0; " \
+                    "cl_pp_dust 0; cl_pp_motionblur 0; cl_pp_dof 0; cl_pp_bloom 0.7; cl_pp_sharpen 0.4; cl_pp_aa 1"
+#define FULL_PRESET "cl_pp_ssao 0.6; cl_pp_contact 0.4; cl_pp_gi 0.6; cl_pp_shafts 1; cl_pp_volumetric 1.5; cl_pp_flashshadows 0.8; " \
+                    "cl_pp_dust 1; cl_pp_motionblur 1; cl_pp_dof 1; cl_pp_bloom 1; cl_pp_sharpen 1; cl_pp_aa 1"
 static const Item kGraphics[] = {
+	A("Preset: Steam Deck (lighter effects, faster)", "preset:" DECK_PRESET),
+	A("Preset: full (the mod's defaults)", "preset:" FULL_PRESET),
 	S("All graphics effects", "cl_pp", "0 1", "Off|On"),
 	S("Ambient occlusion", "cl_pp_ssao", "0 0.3 0.6 1 1.5", "Off|Low|Medium|High|Max"),
 	S("Contact shadows", "cl_pp_contact", "0 0.4 0.8 1.2", OFF_LOW_MED_HIGH),
@@ -198,6 +213,7 @@ static const Item kBody[] = {
 };
 static const Item kMenu[] = {
 	S("Menu style", "cl_fpmenu_style", "0 1", "Classic (number keys)|Big (mouse)"),
+	S("Controller opens the menu (both sticks pressed in)", "cl_fpmenu_pad", "0 1", "Off|On"),
 	S("Extras: monster spawning, other games' maps, placing models, other characters", "cl_fpextras", "0 1", "Off|On"),
 };
 static const Item kSettings[] = {
@@ -445,10 +461,16 @@ static bool *ToggleState(const char *name)
 
 static bool BigMenu(void) { return s_style && s_style->value != 0.0f; }
 
+// Controller / keyboard: the highlighted row (instead of the one under the cursor).
+static int  s_focus;
+static bool s_padNav;               // last input was the pad or the keys
+static cvar_t *s_padOpen;
+
 static void Open(const char *id)
 {
 	s_page = FindPage(id);
 	s_offset = 0;
+	s_focus = 0;
 }
 
 static void Cmd_Menu(void)
@@ -466,6 +488,8 @@ void FpMenu_Init(void)
 	s_bound = FpRegister("cl_fpmenu_bound", "0", FCVAR_ARCHIVE);
 	s_extras = FpRegister("cl_fpextras", "0", FCVAR_ARCHIVE);
 	s_style = FpRegister("cl_fpmenu_style", "1", FCVAR_ARCHIVE);   // 1 = big mouse menu
+	s_padOpen = FpRegister("cl_fpmenu_pad", "1", FCVAR_ARCHIVE);   // L3 + R3 opens the menu
+	FpRegister("cl_fpdeck", "0", FCVAR_ARCHIVE);                   // 1 = the Steam Deck preset was applied
 }
 
 // ---------------------------------------------------------------------------
@@ -487,6 +511,11 @@ static void Send(const char *cmd)
 			s_open = false;
 			eng->pfnClientCmd((char *)(c + "\n").c_str());
 		}
+		return;
+	}
+	if (!strncmp(cmd, "preset:", 7))
+	{
+		eng->pfnClientCmd((char *)(std::string(cmd + 7) + "\n").c_str());
 		return;
 	}
 	if (!strncmp(cmd, "fpchar:", 7))
@@ -638,6 +667,151 @@ static const int kPerPage = 7;
 static int BigRows(void);
 static int BigHit(int *tab);
 
+// --- Controller and keyboard navigation --------------------------------------
+
+static int NavRows(void) { return BigMenu() ? BigRows() : kPerPage; }
+
+// Keep the highlighted row on the page and in view.
+static void ClampFocus(void)
+{
+	if (s_focus >= s_page->count) s_focus = s_page->count - 1;
+	if (s_focus < 0) s_focus = 0;
+	int rows = NavRows();
+	if (!BigMenu())
+		s_offset = s_focus / kPerPage * kPerPage;
+	else if (s_focus < s_offset)
+		s_offset = s_focus;
+	else if (s_focus >= s_offset + rows)
+		s_offset = s_focus - rows + 1;
+}
+
+static void NavMove(int d)
+{
+	s_padNav = true;
+	s_focus += d;
+	ClampFocus();
+}
+
+static void NavActivate(int dir)
+{
+	s_padNav = true;
+	ClampFocus();
+	if (s_page->count > 0)
+		Activate(s_page->items[s_focus], dir);
+	if (s_open) ClampFocus();
+}
+
+static void NavStep(int dir)
+{
+	s_padNav = true;
+	ClampFocus();
+	if (s_page->count > 0 && s_page->items[s_focus].type == SETTING)
+		StepSetting(s_page->items[s_focus], dir);
+}
+
+// Back a page (Games -> Maps, a model folder -> Models...), or close the menu.
+static void NavBack(void)
+{
+	s_padNav = true;
+	const char *parent = s_page->parent;
+	if (!BigMenu()) Back();
+	else if (parent && strcmp(parent, "main") && strcmp(parent, "settings")) Open(parent);
+	else s_open = false;
+}
+
+// Index in shown[] of the big menu's current tab.
+static int CurrentTab(const int *shown, int ns)
+{
+	for (int i = 0; i < ns; i++)
+	{
+		const char *t = kTabs[shown[i]];
+		if (!strcmp(s_page->id, t) || (GamesPage() && !strcmp(t, "maps")) ||
+			(!strcmp(s_page->id, "modelfiles") && !strcmp(t, "models")) ||
+			(!strcmp(t, "cheats") && s_page == &kCheatsPageEnhanced))
+			return i;
+	}
+	return 0;
+}
+
+static void OpenTab(int t)
+{
+	if (!strcmp(kTabs[t], "maps")) FpMaps_Scan();           // pick up newly added maps
+	if (!strcmp(kTabs[t], "player")) FpChars_Scan();        // and characters
+	Open(kTabs[t]);
+}
+
+static void NavTab(int d)
+{
+	s_padNav = true;
+	if (!BigMenu()) return;
+	int shown[32], ns = ShownTabs(shown);
+	OpenTab(shown[(CurrentTab(shown, ns) + d + ns) % ns]);
+}
+
+// Maps / Player: the next game tab.
+static void NavStrip(int d)
+{
+	s_padNav = true;
+	if (!(MapsPage() || PlayerPage()) || !Extras()) return;
+	int n = MapTabs();
+	int &t = PlayerPage() ? s_charTab : s_mapTab;
+	t = (t + d + n) % n;
+	Open(PlayerPage() ? "player" : "maps");
+}
+
+// Maps: the Games button; Games: Done.
+static void NavButton(void)
+{
+	s_padNav = true;
+	if ((MapsPage() && Extras()) || GamesPage())
+		Open(MapsPage() ? "games" : "maps");
+}
+
+static void Cmd_Menu(void);
+
+// Every frame: the controller (opening the menu, and moving around in it).
+static void PollPad(void)
+{
+	PadEvents ev;
+	if (!FpPad_Poll(eng->GetClientTime(), &ev) || !ev.any)
+		return;
+	if (!s_open)
+	{
+		if (ev.toggle && s_padOpen && s_padOpen->value != 0.0f)
+		{
+			Cmd_Menu();
+			s_padNav = true;
+		}
+		return;
+	}
+	if (ev.toggle || ev.start) { s_open = false; return; }
+	if (ev.up)    NavMove(-1);
+	if (ev.down)  NavMove(1);
+	if (ev.left)  NavStep(-1);
+	if (ev.right) NavStep(1);
+	if (ev.a)     NavActivate(1);
+	if (ev.x)     NavActivate(-1);
+	if (ev.b)     NavBack();
+	if (ev.lb)    NavTab(-1);
+	if (ev.rb)    NavTab(1);
+	if (ev.lt)    NavStrip(-1);
+	if (ev.rt)    NavStrip(1);
+	if (ev.y)     NavButton();
+}
+
+#define K_TAB        9
+#define K_ENTER      13
+#define K_BACKSPACE  127
+#define K_UPARROW    128
+#define K_DOWNARROW  129
+#define K_LEFTARROW  130
+#define K_RIGHTARROW 131
+#define K_PGDN       149
+#define K_PGUP       150
+#define K_KP_ENTER   169
+#define K_JOY1       203
+#define K_AUX32      238
+
 // Returns 0 when the menu used the key (so the game doesn't act on it as well).
 int FpMenu_Key(int down, int keynum)
 {
@@ -647,6 +821,20 @@ int FpMenu_Key(int down, int keynum)
 	{
 		if (down) s_open = false;
 		return 0;
+	}
+	if (keynum >= K_JOY1 && keynum <= K_AUX32)      // the game's own controller buttons: the menu has them
+		return 0;
+	switch (keynum)
+	{
+	case K_UPARROW:    if (down) NavMove(-1); return 0;
+	case K_DOWNARROW:  if (down) NavMove(1); return 0;
+	case K_LEFTARROW:  if (down) NavStep(-1); return 0;
+	case K_RIGHTARROW: if (down) NavStep(1); return 0;
+	case K_ENTER: case K_KP_ENTER: if (down) NavActivate(1); return 0;
+	case K_BACKSPACE:  if (down) NavBack(); return 0;
+	case K_TAB:        if (down) NavTab(1); return 0;
+	case K_PGUP:       if (down) NavMove(-NavRows()); return 0;
+	case K_PGDN:       if (down) NavMove(NavRows()); return 0;
 	}
 
 	if (BigMenu())
@@ -666,14 +854,11 @@ int FpMenu_Key(int down, int keynum)
 		{
 			if (down)
 			{
+				s_padNav = false;
 				int tab = -1;
 				int row = BigHit(&tab);
 				if (tab >= 0)
-				{
-					if (!strcmp(kTabs[tab], "maps")) FpMaps_Scan();           // pick up newly added maps
-					if (!strcmp(kTabs[tab], "player")) FpChars_Scan();        // and characters
-					Open(kTabs[tab]);
-				}
+					OpenTab(tab);
 				else if (row == -2) s_open = false;                        // close button
 				else if (row == -3) Open(MapsPage() ? "games" : "maps");   // Games / Done
 				else if (row <= -100 && PlayerPage()) { s_charTab = -100 - row; Open("player"); }
@@ -719,6 +904,8 @@ void FpMenu_CreateMove(usercmd_t *cmd)
 	while (dyaw > 180.0f) dyaw -= 360.0f;
 	while (dyaw < -180.0f) dyaw += 360.0f;
 	float dpitch = ang[0] - s_frozen[0];
+	if (fabsf(dyaw) + fabsf(dpitch) > 0.05f)
+		s_padNav = false;                      // the mouse (or the right stick / trackpad) moved the cursor
 	float pxPerDeg = s_scrH / 70.0f;
 	s_cursorX -= dyaw * pxPerDeg;
 	s_cursorY += dpitch * pxPerDeg;
@@ -728,7 +915,9 @@ void FpMenu_CreateMove(usercmd_t *cmd)
 	if (s_cursorY > s_scrH - 1) s_cursorY = (float)(s_scrH - 1);
 	eng->SetViewAngles(s_frozen);
 	VectorCopy(s_frozen, cmd->viewangles);
-	cmd->buttons &= ~(IN_ATTACK | IN_ATTACK2);
+	// Stand still: the controller's stick and buttons are for the menu now.
+	cmd->forwardmove = cmd->sidemove = cmd->upmove = 0;
+	cmd->buttons = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -798,10 +987,10 @@ static void DrawClassic(int charH)
 		{
 			char val[48];
 			SettingText(it, val, sizeof(val));
-			_snprintf(buf[n++], 160, "%d. %s: %s", i + 1, label, val);
+			_snprintf(buf[n++], 160, "%s%d. %s: %s", s_padNav && s_offset + i == s_focus ? "> " : "", i + 1, label, val);
 		}
 		else
-			_snprintf(buf[n++], 160, "%d. %s", i + 1, label);
+			_snprintf(buf[n++], 160, "%s%d. %s", s_padNav && s_offset + i == s_focus ? "> " : "", i + 1, label);
 	}
 	if (s_offset > 0) _snprintf(buf[n++], 160, "8. Previous page");
 	if (s_offset + kPerPage < s_page->count) _snprintf(buf[n++], 160, "9. Next page");
@@ -1016,6 +1205,11 @@ static void DrawBig(int charH)
 	BigLayout L = Layout();
 	int tabHover = -1;
 	int rowHover = BigHit(&tabHover);
+	if (s_padNav)                              // controller / keys: the highlighted row
+	{
+		tabHover = -1;
+		rowHover = s_focus - s_offset >= 0 && s_focus - s_offset < L.rows ? s_focus - s_offset : -1;
+	}
 	int textOff = (L.rowH - charH) / 2;
 
 	BeginShapes();
@@ -1095,8 +1289,11 @@ static void DrawBig(int charH)
 		DrawClothesPreview(L, rowHover, charH);
 	if (PlayerPage())
 		DrawPlayerPreview(L, rowHover, charH);
-	Text(L.listX, L.y + L.h - charH - 8,
+	Text(L.listX, L.y + L.h - charH - 8, s_padNav ?
+		"A: pick    X / left / right: change    B: back    LB / RB: tabs    LT / RT: games    Y: Games    L3+R3: close" :
 		"Left click: pick / next    Right click: previous    Wheel: scroll    F8 / Esc: close", 0.55f, 0.55f, 0.55f);
+	if (s_padNav)                              // no mouse cursor while using the controller
+		return;
 
 	// Cursor: a small arrow with a dark outline.
 	BeginShapes();
@@ -1126,6 +1323,19 @@ void FpMenu_Draw(void)
 			eng->Con_Printf("fp_menu: spawn/cheat/settings menu bound to F8\n");
 		}
 	}
+	// On a Steam Deck (Steam sets SteamDeck=1, also under Proton): lighter effects, once.
+	static bool checkedDeck;
+	if (!checkedDeck)
+	{
+		checkedDeck = true;
+		const char *deck = getenv("SteamDeck");
+		if (deck && atoi(deck) == 1 && CvarValue("cl_fpdeck") == 0.0f)
+		{
+			eng->pfnClientCmd((char *)(DECK_PRESET "; cl_fpdeck 1\n"));
+			eng->Con_Printf("fp_menu: Steam Deck: lighter graphics preset applied (F8 > Graphics to change)\n");
+		}
+	}
+	PollPad();
 	if (!s_open)
 		return;
 	SCREENINFO si;

@@ -34,6 +34,8 @@ Type these in the console (`~`). The values shown are the defaults that `install
 | `cl_fpvm_sway` | 1 | inertia sway |
 | `cl_fpvm_breath` | 1 | idle breathing |
 | `cl_fpvm_action` | 1 | sprint/jump/land/fire/reload offsets |
+| `cl_fpmenu_pad` | 1 | controller (Steam Deck, Xbox pads): both sticks pressed in (L3 + R3) open and close the F8 menu |
+| `cl_fpdeck` | 0 | set to 1 once the Steam Deck graphics preset has been applied (set it to 0 to have it applied again on a Deck) |
 | `cl_fpextras` | 0 | F8 menu Extras: the Monsters tab, other games' maps, the Models tab, the Player tab |
 | `cl_fists` | 0 | fists mode: the nightstick becomes bare fists (mouse 1 jab, mouse 2 cross). `fp_fists` toggles it |
 

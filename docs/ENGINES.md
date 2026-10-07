@@ -59,6 +59,12 @@ Cry of Fear is a Windows game; on Linux it runs through Steam's **Proton** (Prop
 
 `install.sh` also applies the **Wine/Proton graphics fix** on the original engine. Cry of Fear's own `opengl32.dll` (its renderer wrapper) clashes with Wine's, and gives up on drivers that lack an old function. The fix uses it as `opengp32.dll` with that check skipped, and points the engine and client at it. It's the same 14-byte change as the community "CoF fix" zip, made to your own files by `tools/cof_glfix.py` (Python 3), which checks every file before and after. `--no-glfix` skips it; `python3 tools/cof_glfix.py "<game>" --undo` undoes it. The mod draws with whichever renderer the engine loaded.
 
+### Steam Deck controls
+- **Can't move?** Pick a controller layout for Cry of Fear in Steam (Steam button → Controller settings) so the sticks and buttons are mapped to the game's movement keys. The mod's menu works with any layout, but walking needs one.
+- **F8 menu:** press **both sticks in (L3 + R3)** to open and close it. Then: D-pad or left stick to move, **A** to pick, **left / right** or **X** to change a setting, **B** to go back, **LB / RB** to switch tabs, **LT / RT** for the game tabs on Maps and Player, **Y** for Games / Done, **Start** to close. The right trackpad or stick still moves the mouse cursor. While the menu is open you stand still.
+- It reads the controller through Steam Input's Xbox controller, so it works with any of Steam's controller layouts. Turn it off with `cl_fpmenu_pad 0` (F8 → Settings) if you use L3 + R3 together in the game. You can also map a back button (L4/R4) to **F8** in Steam's controller settings.
+- **Graphics:** on a Steam Deck the mod switches to lighter effects by itself the first time it runs. F8 → Graphics → **Preset: full** puts the PC defaults back, **Preset: Steam Deck** the lighter ones again.
+
 `./uninstall.sh` and `./remove_everything.sh` work like their `.bat` versions (`remove_everything.sh` also undoes the graphics fix). The Source map converter needs the Half-Life SDK's Windows compilers, so it's Windows only for now.
 
 ## Removing everything
