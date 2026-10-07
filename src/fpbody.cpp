@@ -41,6 +41,9 @@ void FpMenu_Init(void);
 void FpMenu_Draw(void);
 int  FpMenu_Key(int down, int keynum);
 void FpMenu_CreateMove(usercmd_t *cmd);
+bool FpMenu_IsOpen(void);
+void FpPad_Init(void);
+void FpPad_CreateMove(float frametime, usercmd_s *cmd, bool menuOpen);
 void FpCrash_Init(void);
 void FpFists_Init(void);
 void FpChars_Init(void);
@@ -804,6 +807,7 @@ extern "C" int W_HUD_Init(void)
 	eng->pfnAddCommand("fpbody_reload", Cmd_FpbodyReload);
 	eng->pfnAddCommand("fp_bench", Cmd_Bench);
 	FpMenu_Init();
+	FpPad_Init();
 	FpFists_Init();
 	FpChars_Init();
 	LoadSettings();
@@ -1056,6 +1060,7 @@ extern "C" void W_CL_CreateMove(float frametime, usercmd_t *cmd, int active)
 {
 	EnsureLoaded();
 	((CL_CreateMove_t)p_CL_CreateMove)(frametime, cmd, active);
+	FpPad_CreateMove(frametime, cmd, FpMenu_IsOpen());   // controller: sticks move and look
 	FpCam_CreateMove(cmd);
 	FpMenu_CreateMove(cmd);     // big menu: mouse moves the cursor, not the view
 	FpFists_CreateMove(cmd);    // fists mode: mouse 2 punches too

@@ -59,10 +59,27 @@ Cry of Fear is a Windows game; on Linux it runs through Steam's **Proton** (Prop
 
 `install.sh` also applies the **Wine/Proton graphics fix** on the original engine. Cry of Fear's own `opengl32.dll` (its renderer wrapper) clashes with Wine's, and gives up on drivers that lack an old function. The fix uses it as `opengp32.dll` with that check skipped, and points the engine and client at it. It's the same 14-byte change as the community "CoF fix" zip, made to your own files by `tools/cof_glfix.py` (Python 3), which checks every file before and after. `--no-glfix` skips it; `python3 tools/cof_glfix.py "<game>" --undo` undoes it. The mod draws with whichever renderer the engine loaded.
 
-### Steam Deck controls
-- **Can't move?** Pick a controller layout for Cry of Fear in Steam (Steam button → Controller settings) so the sticks and buttons are mapped to the game's movement keys. The mod's menu works with any layout, but walking needs one.
-- **F8 menu:** press **both sticks in (L3 + R3)** to open and close it. Then: D-pad or left stick to move, **A** to pick, **left / right** or **X** to change a setting, **B** to go back, **LB / RB** to switch tabs, **LT / RT** for the game tabs on Maps and Player, **Y** for Games / Done, **Start** to close. The right trackpad or stick still moves the mouse cursor. While the menu is open you stand still.
-- It reads the controller through Steam Input's Xbox controller, so it works with any of Steam's controller layouts. Turn it off with `cl_fpmenu_pad 0` (F8 → Settings) if you use L3 + R3 together in the game. You can also map a back button (L4/R4) to **F8** in Steam's controller settings.
+### Controller and Steam Deck
+**Use a gamepad layout** for Cry of Fear in Steam (Steam button → Controller settings → **Gamepad**, or *Gamepad with Mouse Trackpad* to also have the trackpad as a mouse in the game's own menus). The mod then plays the game with the controller, in the same layout as Cry of Fear: Enhanced's:
+
+| Control | Does |
+|---|---|
+| Left stick / right stick | move / look |
+| RT / LT | attack / aim |
+| LB / RB | secondary attack / dodge |
+| A / B | jump / crouch (toggle) |
+| X / Y | reload / use, pick up |
+| L3 / R3 | sprint (toggle, stops when you stop) / quick 180° turn |
+| D-pad up / left / right / down | quick slot 1 / 2 / 3 / weapon toggle |
+| View / Menu | inventory / pause |
+| **L3 + R3** (both sticks in) | **F8 menu** |
+
+In the F8 menu: D-pad or left stick to move, **A** to pick, **left / right** or **X** to change a setting, **B** to go back, **LB / RB** to switch tabs, **LT / RT** for the game tabs on Maps and Player, **Y** for Games / Done, **Menu** or L3 + R3 to close. While it's open you stand still and the buttons don't reach the game.
+
+- The light is the phone: pick it with its quick slot (or from the inventory) like with the keyboard.
+- Look speed: `cl_fppad_look` (1 = 220° a second at full tilt), up / down inverted: `cl_fppad_invert 1`. `cl_fppad 0` turns controller playing off (for a Steam layout that sends keys instead); `cl_fpmenu_pad 0` stops L3 + R3 opening the menu.
+- The game's own main menu doesn't take the controller: use the trackpad (Gamepad with Mouse Trackpad layout) and R2 / the trackpad click.
+- On **Cry of Fear: Enhanced**, Enhanced plays the game with the controller itself; the mod only adds the F8 menu. L3 + R3 there also toggles Enhanced's sprint and quick turn, so you may prefer mapping a Deck back button (L4 / R4) to **F8** and setting `cl_fpmenu_pad 0`.
 - **Graphics:** on a Steam Deck the mod switches to lighter effects by itself the first time it runs. F8 → Graphics → **Preset: full** puts the PC defaults back, **Preset: Steam Deck** the lighter ones again.
 
 `./uninstall.sh` and `./remove_everything.sh` work like their `.bat` versions (`remove_everything.sh` also undoes the graphics fix). The Source map converter needs the Half-Life SDK's Windows compilers, so it's Windows only for now.

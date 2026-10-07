@@ -32,6 +32,7 @@
 #include "cvardef.h"
 #include "usercmd.h"
 #include "in_buttons.h"
+#include "fppad.h"
 
 extern cl_enginefunc_t *eng;
 cvar_t *FpRegister(const char *name, const char *value, int flags);
@@ -42,8 +43,6 @@ std::string FpChars_Pick(int tab, int i);
 void        FpChars_PickSimon(void);
 std::string FpChars_Path(int tab, int i);
 const char *FpChars_Simon(void);
-struct PadEvents { bool up, down, left, right, a, b, x, y, lb, rb, lt, rt, start, toggle, any; };
-bool        FpPad_Poll(float now, PadEvents *ev);
 bool        FpPreview_Draw3D(const char *path, int x, int y, int w, int h, int screenW, int screenH, float time);
 int         FpProps_NumDirs(void);
 const char *FpProps_DirName(int d);
@@ -769,12 +768,9 @@ static void NavButton(void)
 
 static void Cmd_Menu(void);
 
-// Every frame: the controller (opening the menu, and moving around in it).
-static void PollPad(void)
+// Every frame: the controller (opening the menu and moving around in it, or playing).
+static void PadMenu(const PadEvents &ev)
 {
-	PadEvents ev;
-	if (!FpPad_Poll(eng->GetClientTime(), &ev) || !ev.any)
-		return;
 	if (!s_open)
 	{
 		if (ev.toggle && s_padOpen && s_padOpen->value != 0.0f)
@@ -799,6 +795,17 @@ static void PollPad(void)
 	if (ev.y)     NavButton();
 }
 
+static void PollPad(void)
+{
+	PadEvents ev;
+	float now = eng->GetClientTime();
+	if (FpPad_Poll(now, &ev) && ev.any)
+		PadMenu(ev);
+	FpPad_Game(s_open, now);
+}
+
+bool FpMenu_IsOpen(void) { return s_open; }
+
 #define K_TAB        9
 #define K_ENTER      13
 #define K_BACKSPACE  127
@@ -822,7 +829,7 @@ int FpMenu_Key(int down, int keynum)
 		if (down) s_open = false;
 		return 0;
 	}
-	if (keynum >= K_JOY1 && keynum <= K_AUX32)      // the game's own controller buttons: the menu has them
+	if (keynum >= K_JOY1 && (keynum < K_MWHEELDOWN || keynum > K_MOUSE2 + 3))   // controller buttons (the engine's, or Enhanced's above 255): the menu has them
 		return 0;
 	switch (keynum)
 	{

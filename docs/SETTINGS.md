@@ -34,6 +34,9 @@ Type these in the console (`~`). The values shown are the defaults that `install
 | `cl_fpvm_sway` | 1 | inertia sway |
 | `cl_fpvm_breath` | 1 | idle breathing |
 | `cl_fpvm_action` | 1 | sprint/jump/land/fire/reload offsets |
+| `cl_fppad` | 1 | play with a controller (Steam Deck, Xbox pads) on the original engine; see ENGINES.md for the buttons |
+| `cl_fppad_look` | 1 | controller look speed (1 = 220° a second at full tilt) |
+| `cl_fppad_invert` | 0 | 1 = controller up / down look inverted |
 | `cl_fpmenu_pad` | 1 | controller (Steam Deck, Xbox pads): both sticks pressed in (L3 + R3) open and close the F8 menu |
 | `cl_fpdeck` | 0 | set to 1 once the Steam Deck graphics preset has been applied (set it to 0 to have it applied again on a Deck) |
 | `cl_fpextras` | 0 | F8 menu Extras: the Monsters tab, other games' maps, the Models tab, the Player tab |
