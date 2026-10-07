@@ -38,11 +38,34 @@ static const char *kSimon = "models/cutscene/player.mdl";
 static const char *kBodySeqs[] = { "idle", "look_idle", "walk", "run", "run2", "sprint", "crouch_idle",
                                    "crawl", "crouch_crouch", "crouch_walk", "jump" };
 // Bones a character needs (Simon's names) so his animations and the body's
-// hiding of head and arms fit it.
+// hiding of head and arms fit it. Other names for the same bones count too (FpBoneIs).
 static const char *kNeedBones[] = { "Bip01", "Bip01 Pelvis", "Bip01 Spine", "Bip01 Head", "Bip01 L Leg", "Bip01 R Leg",
                                     "Bip01 L Leg1", "Bip01 R Leg1", "Bip01 L Foot", "Bip01 R Foot", "Bip01 L Arm1", "Bip01 R Arm1" };
 
 static cvar_t *s_anims;
+
+// Other names riggers gave Simon's bones, in "Bip01 L/R <part>" names: the
+// standard biped's (Thigh, Calf, Clavicle, UpperArm, Forearm) and the Swedish
+// ones of Sophie and others (benupp = thigh, benkne = shin, axel = shoulder,
+// nederarm = forearm, tumme = thumb).
+static const char *const kAliases[][2] = {
+	{ "Leg", "Thigh" }, { "Leg", "benupp" }, { "Leg1", "Calf" }, { "Leg1", "benkne" },
+	{ "Arm", "Clavicle" }, { "Arm", "axel" }, { "Arm1", "UpperArm" }, { "Arm2", "Forearm" }, { "Arm2", "nederarm" },
+	{ "Finger0", "tumme1" }, { "Finger01", "tumme2" },
+	{ "Finger1", "finger1" }, { "Finger11", "finger2" }, { "Finger12", "finger3" },
+};
+
+// Is a bone named `bone` Simon's bone `simon` (e.g. "Bip01 L Arm1" = "Bip01 L UpperArm")?
+bool FpBoneIs(const char *bone, const char *simon)
+{
+	if (!_stricmp(bone, simon)) return true;
+	if (_strnicmp(bone, "Bip01 ", 6) || _strnicmp(simon, "Bip01 ", 6)) return false;
+	const char *a = bone + 6, *b = simon + 6;
+	if ((a[0] != 'L' && a[0] != 'R') || a[1] != ' ' || toupper(b[0]) != a[0] || b[1] != ' ') return false;
+	for (auto &al : kAliases)
+		if (!_stricmp(b + 2, al[0]) && !_stricmp(a + 2, al[1])) return true;
+	return false;
+}
 
 struct Char { std::string rel, label; };                // rel: path relative to its game folder
 static std::vector<std::vector<Char>> s_tabs;            // per Maps tab
@@ -99,7 +122,7 @@ static bool IsCharacter(const std::string &path)
 		for (const char *need : kNeedBones)
 		{
 			if (!ok) break;
-			ok = std::any_of(bones.begin(), bones.end(), [&](const mstudiobone_t &b) { return !_stricmp(b.name, need); });
+			ok = std::any_of(bones.begin(), bones.end(), [&](const mstudiobone_t &b) { return FpBoneIs(b.name, need); });
 		}
 	}
 	fclose(f);
@@ -164,6 +187,15 @@ void FpChars_Scan(void)
 
 int FpChars_Count(int tab) { if (!s_scanned) FpChars_Scan(); return tab >= 0 && tab < (int)s_tabs.size() ? (int)s_tabs[tab].size() : 0; }
 const char *FpChars_Label(int tab, int i) { return i >= 0 && i < FpChars_Count(tab) ? s_tabs[tab][i].label.c_str() : ""; }
+
+// Where the model is now, for the menu's preview: cryoffear-relative, or a full path in another game.
+std::string FpChars_Path(int tab, int i)
+{
+	if (i < 0 || i >= FpChars_Count(tab)) return "";
+	const char *dir = FpMaps_TabDir(tab);
+	return dir ? std::string(dir) + "\\" + s_tabs[tab][i].rel : s_tabs[tab][i].rel;
+}
+const char *FpChars_Simon(void) { return kSimon; }
 
 // ---------------------------------------------------------------------------
 // Picking
@@ -242,11 +274,14 @@ static short AnimValue(const mstudioanim_t *anim, int ch, int frame)
 	return p->num.valid > k ? p[k + 1].value : p[p->num.valid].value;
 }
 
+// By name, or another name for the same bone (either way round: Simon's or the character's).
 static int BoneByName(const studiohdr_t *h, const char *name)
 {
 	const mstudiobone_t *b = (const mstudiobone_t *)((const byte *)h + h->boneindex);
 	for (int i = 0; i < h->numbones; i++)
 		if (!_stricmp(b[i].name, name)) return i;
+	for (int i = 0; i < h->numbones; i++)
+		if (FpBoneIs(b[i].name, name) || FpBoneIs(name, b[i].name)) return i;
 	return -1;
 }
 

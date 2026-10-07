@@ -9,6 +9,8 @@ Type these in the console (`~`). The values shown are the defaults that `install
 | `cl_fpbody_offset` | 15 | how far the body sits behind the camera (standing) |
 | `cl_fpbody_crouchoffset` | 20 | the same, crouched |
 | `cl_fpbody_zoffset` | 0 | raise/lower the body |
+| `cl_fpbody_turn` | 1 | turn in place: standing still, the feet stay planted while you look around, and the body steps round when you turn further than `cl_fpbody_turnangle` |
+| `cl_fpbody_turnangle` | 55 | how far (degrees) you can turn before the body steps round |
 | `cl_fpbody_arms` | 0 | 1 = also draw the body's arms |
 | `cl_fpbody_simon` | models/cutscene/player.mdl | model used for the body |
 | `cl_fpbody_debug` | 0 | print body state once a second |
@@ -32,7 +34,7 @@ Type these in the console (`~`). The values shown are the defaults that `install
 | `cl_fpvm_sway` | 1 | inertia sway |
 | `cl_fpvm_breath` | 1 | idle breathing |
 | `cl_fpvm_action` | 1 | sprint/jump/land/fire/reload offsets |
-| `cl_fpextras` | 0 | F8 menu Extras: the Monsters tab, other games' maps, the Models tab |
+| `cl_fpextras` | 0 | F8 menu Extras: the Monsters tab, other games' maps, the Models tab, the Player tab |
 | `cl_fists` | 0 | fists mode: the nightstick becomes bare fists (mouse 1 jab, mouse 2 cross). `fp_fists` toggles it |
 
 ## Field of view

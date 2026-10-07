@@ -1,6 +1,7 @@
 // Offline test of the Clothes 3D preview (src/fpclothes.cpp): renders Simon in a
 // few costumes into a hidden OpenGL window and saves the pixels as .bmp files.
 // Usage: clothes3dtest.exe "<...\cryoffear>" <out prefix> costume [costume ...]
+//        a model path instead of a costume number renders the Player tab's preview of it
 #include "../src/fpclothes.cpp"
 #include <stdarg.h>
 
@@ -60,7 +61,10 @@ int main(int argc, char **argv)
 		glDepthRange(1.0, 0.5); glDepthFunc(GL_GEQUAL); glClearDepth(0.0); glEnable(GL_DEPTH_TEST);
 		// the map's depth right in front of the camera, and depth writes off, as under the HUD
 		glDepthRange(0.0, 1.0); glClearDepth(0.0); glClear(GL_DEPTH_BUFFER_BIT); glDepthMask(GL_FALSE);
-		FpClothes_Draw3D(costume, 0, 0, W, H, W, H, 1.3f + a * 0.9f);
+		bool model = strchr(argv[a], '/') || strchr(argv[a], '\\');
+		if (model) costume = 100 + a;
+		if (model) printf("%s: %s\n", argv[a], FpPreview_Draw3D(argv[a], 0, 0, W, H, W, H, 1.3f + a * 0.9f) ? "drawn" : "can't be read");
+		else FpClothes_Draw3D(costume, 0, 0, W, H, W, H, 1.3f + a * 0.9f);
 		glFinish();
 		std::vector<byte> rgb(W * H * 3);
 		glReadBuffer(GL_BACK);

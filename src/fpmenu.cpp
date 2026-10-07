@@ -34,6 +34,9 @@ int         FpChars_Count(int tab);
 const char *FpChars_Label(int tab, int i);
 std::string FpChars_Pick(int tab, int i);
 void        FpChars_PickSimon(void);
+std::string FpChars_Path(int tab, int i);
+const char *FpChars_Simon(void);
+bool        FpPreview_Draw3D(const char *path, int x, int y, int w, int h, int screenW, int screenH, float time);
 int         FpProps_NumDirs(void);
 const char *FpProps_DirName(int d);
 int         FpProps_NumModels(int d);
@@ -190,10 +193,12 @@ static const Item kBody[] = {
 	S("Body and legs", "cl_fpbody", "0 1", "Off|On"),
 	S("Body arms", "cl_fpbody_arms", "0 1", "Hidden|Shown"),
 	S("Body distance behind camera", "cl_fpbody_offset", "10 15 20 25", ""),
+	S("Turn in place (feet stay planted, step round)", "cl_fpbody_turn", "0 1", "Off|On"),
+	S("Turn before stepping (degrees)", "cl_fpbody_turnangle", "35 45 55 70 90", ""),
 };
 static const Item kMenu[] = {
 	S("Menu style", "cl_fpmenu_style", "0 1", "Classic (number keys)|Big (mouse)"),
-	S("Extras: monster spawning, other games' maps, placing models", "cl_fpextras", "0 1", "Off|On"),
+	S("Extras: monster spawning, other games' maps, placing models, other characters", "cl_fpextras", "0 1", "Off|On"),
 };
 static const Item kSettings[] = {
 	O("Graphics", "graphics"), O("Camera and field of view", "camera"), O("Hands and weapon", "hands"),
@@ -231,14 +236,14 @@ static const int kNumTabs = sizeof(kTabs) / sizeof(kTabs[0]);
 
 static bool Enhanced(void) { return GetModuleHandleA("xash.dll") != NULL; }
 
-// Extras (Settings > Extras, cl_fpextras): monster spawning, other games' maps
-// and placing models only show up when it's on.
+// Extras (Settings > Extras, cl_fpextras): monster spawning, other games' maps,
+// placing models and playing as other characters only show up when it's on.
 static cvar_t *s_extras;
 static bool Extras(void) { return s_extras && s_extras->value != 0.0f; }
 
 static bool TabShown(int t)
 {
-	return Extras() || (strcmp(kTabs[t], "monsters") && strcmp(kTabs[t], "models"));
+	return Extras() || (strcmp(kTabs[t], "monsters") && strcmp(kTabs[t], "models") && strcmp(kTabs[t], "player"));
 }
 
 // Indices of the big menu's tabs that are shown, in order.
@@ -375,7 +380,7 @@ static const Page *BuildMain(void)
 	s_mainItems.clear();
 	for (const Item &it : kMain)
 	{
-		if (!Extras() && !strcmp(it.cmd, "monsters")) continue;
+		if (!Extras() && (!strcmp(it.cmd, "monsters") || !strcmp(it.cmd, "player"))) continue;
 		s_mainItems.push_back(it);
 		if (Extras() && !strcmp(it.cmd, "maps"))
 			s_mainItems.push_back({ OPEN, "Models", "models", NULL, NULL });
@@ -834,7 +839,7 @@ static BigLayout Layout(void)
 	L.closeX = L.x + L.w - L.closeS - 10;
 	L.closeY = L.y + 8;
 	L.listR = L.x + L.w - 16;
-	if (ClothesPage())
+	if (ClothesPage() || PlayerPage())                          // room for the 3D preview
 		L.listR = L.listX + (L.x + L.w - 16 - L.listX) * 45 / 100;
 	L.stripY = L.btnY = L.btnW = 0;
 	if ((MapsPage() || PlayerPage()) && Extras())              // row of game tabs (an Extra)
@@ -980,6 +985,32 @@ static void DrawClothesPreview(const BigLayout &L, int rowHover, int charH)
 	}
 }
 
+// Player page: the character under the cursor (or the one you are), turning in 3D.
+static void DrawPlayerPreview(const BigLayout &L, int rowHover, int charH)
+{
+	std::string path, name;
+	const Item *it = rowHover >= 0 && s_offset + rowHover < s_page->count ? &s_page->items[s_offset + rowHover] : NULL;
+	if (it && it->type == ACTION && !strcmp(it->cmd, "fpchar:simon"))
+		path = FpChars_Simon(), name = it->label;
+	else if (it && it->type == ACTION && !strncmp(it->cmd, "fpchar:", 7))
+		path = FpChars_Path(s_charTab, atoi(it->cmd + 7)), name = it->label;
+	else
+	{
+		const char *cur = eng->pfnGetCvarString ? eng->pfnGetCvarString((char *)"cl_fpbody_simon") : "";
+		path = cur && cur[0] ? cur : FpChars_Simon();
+		name = "You: " + path;
+	}
+	int px = L.listR + 16, pw = L.x + L.w - 16 - px;
+	int py = L.listY, ph = L.rows * L.rowH;
+	BeginShapes();
+	Rect(px, py, pw, ph, 0, 0, 0, 0.35f);
+	EndShapes();
+	Text(px + 12, py + 8, name.c_str(), 1.0f, 0.75f, 0.45f);
+	int top = py + charH + 20;
+	if (!FpPreview_Draw3D(path.c_str(), px + 8, top, pw - 16, py + ph - 8 - top, s_scrW, s_scrH, eng->GetClientTime()))
+		Text(px + 12, py + 16 + charH * 2, "No preview: model can't be read", 0.7f, 0.7f, 0.7f);
+}
+
 static void DrawBig(int charH)
 {
 	BigLayout L = Layout();
@@ -1057,11 +1088,13 @@ static void DrawBig(int charH)
 			SettingText(it, val, sizeof(val));
 			_snprintf(shown, sizeof(shown), "<  %s  >", val);
 			shown[sizeof(shown) - 1] = 0;
-			Text(L.x + L.w - 30 - TextWidth(shown), ry, shown, 1.0f, 0.75f, 0.45f);
+			Text(L.listR - 14 - TextWidth(shown), ry, shown, 1.0f, 0.75f, 0.45f);   // inside its row (pages with a preview are narrower)
 		}
 	}
 	if (ClothesPage())
 		DrawClothesPreview(L, rowHover, charH);
+	if (PlayerPage())
+		DrawPlayerPreview(L, rowHover, charH);
 	Text(L.listX, L.y + L.h - charH - 8,
 		"Left click: pick / next    Right click: previous    Wheel: scroll    F8 / Esc: close", 0.55f, 0.55f, 0.55f);
 
@@ -1106,6 +1139,8 @@ void FpMenu_Draw(void)
 	// The style can change from inside the menu: the big one has no main/settings list.
 	if (BigMenu() && (s_page == FindPage("main") || s_page == FindPage("settings")))
 		Open("graphics");
+	if (PlayerPage() && !Extras())                         // Extras switched off while it was open
+		Open(BigMenu() ? "weapons" : "main");
 	if (BigMenu()) DrawBig(charH);
 	else           DrawClassic(charH);
 }

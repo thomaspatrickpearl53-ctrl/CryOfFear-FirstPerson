@@ -149,6 +149,7 @@ cl_enginefunc_t            *eng;            // engine function table (owned by e
 engine_studio_api_t         g_studioEng;    // engine's studio API, untouched
 
 static cvar_t *fp_enable, *fp_offset, *fp_crouchoffset, *fp_zoffset, *fp_arms, *fp_model, *fp_debug;
+static cvar_t *fp_turn, *fp_turnangle;
 
 static cl_entity_t  g_body;          // must stay alive: the engine keeps a pointer in its visedict list
 static model_t     *g_bodyModel;
@@ -168,6 +169,7 @@ static float g_phase;
 static float g_bodyYaw;
 static float g_lastTime = -1.0f;
 static bool  g_wasAirborne;
+static int   g_turnState;            // turn in place: 0 planted, 1 stepping round, 2 finishing the step
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,11 +251,14 @@ static int FindSeq(studiohdr_t *hdr, const char *name)
 	return -1;
 }
 
+bool FpBoneIs(const char *bone, const char *simon);
+
+// Simon's bone `name` in the model (or the same bone under another name: fpchars.cpp).
 static int FindBone(studiohdr_t *hdr, const char *name)
 {
 	mstudiobone_t *b = (mstudiobone_t *)((byte *)hdr + hdr->boneindex);
 	for (int i = 0; i < hdr->numbones; i++)
-		if (!_stricmp(b[i].name, name))
+		if (FpBoneIs(b[i].name, name))
 			return i;
 	return -1;
 }
@@ -528,8 +533,38 @@ static void UpdateBody(ref_params_t *pp)
 		if (diff < -70.0f) diff = -70.0f;
 		targetYaw = viewYaw + diff;
 	}
-	float k = dt * 10.0f; if (k > 1.0f || dt == 0.0f) k = 1.0f;
-	g_bodyYaw = AngleNorm(g_bodyYaw + AngleNorm(targetYaw - g_bodyYaw) * k);
+
+	// Turn in place (cl_fpbody_turn): standing still, the feet stay planted while
+	// the view turns; past cl_fpbody_turnangle the body steps round to face the
+	// view (the walk cycle as the steps), then finishes the step it's in.
+	bool still = speed <= 5.0f && !airborne && fp_turn && fp_turn->value != 0.0f && dt > 0.0f;
+	if (still)
+	{
+		float limit = fp_turnangle ? fp_turnangle->value : 55.0f;
+		if (limit < 10.0f) limit = 10.0f;
+		float diff = AngleNorm(viewYaw - g_bodyYaw);
+		if (g_turnState != 1 && fabsf(diff) > limit)
+			g_turnState = 1;
+		if (g_turnState == 1)
+		{
+			float rate = fmaxf(200.0f, fabsf(diff) * 7.0f);        // faster when the view runs ahead
+			float turn = rate * dt;
+			if (fabsf(diff) <= turn) { g_bodyYaw = viewYaw; g_turnState = 2; }
+			else g_bodyYaw = AngleNorm(g_bodyYaw + (diff > 0 ? turn : -turn));
+		}
+		diff = AngleNorm(viewYaw - g_bodyYaw);                     // never further behind than this
+		float hard = limit + 35.0f;
+		if (diff > hard) g_bodyYaw = AngleNorm(viewYaw - hard);
+		if (diff < -hard) g_bodyYaw = AngleNorm(viewYaw + hard);
+		if (g_turnState)
+			seq = crouched ? seq_cwalk : seq_walk;
+	}
+	else
+	{
+		g_turnState = 0;
+		float k = dt * 10.0f; if (k > 1.0f || dt == 0.0f) k = 1.0f;
+		g_bodyYaw = AngleNorm(g_bodyYaw + AngleNorm(targetYaw - g_bodyYaw) * k);
+	}
 
 	// Advance the animation ourselves (sequences are in-place, so scale by real speed).
 	studiohdr_t *hdr = BodyHeader();
@@ -538,6 +573,8 @@ static void UpdateBody(ref_params_t *pp)
 	mstudioseqdesc_t *sd = (mstudioseqdesc_t *)((byte *)hdr + hdr->seqindex) + seq;
 	float natural = (sd->numframes > 1) ? sd->fps / (float)(sd->numframes - 1) : 0.0f; // cycles/sec
 	float cycleRate = natural;
+	if (g_turnState)
+		cycleRate = natural * 1.3f;                                   // quick steps on the spot
 	float stride = sqrtf(DotProduct(sd->linearmovement, sd->linearmovement)); // units per cycle
 	if (stride > 1.0f && speed > 5.0f && !airborne)
 	{
@@ -556,7 +593,17 @@ static void UpdateBody(ref_params_t *pp)
 		g_phase = 0.0f;
 	g_wasAirborne = airborne;
 
+	float before = g_phase;
 	g_phase += dt * cycleRate * dir;
+	// Turned round: stop at the next half cycle, where the feet are together.
+	if (g_turnState == 2 && floorf(g_phase * 2.0f) != floorf(before * 2.0f))
+	{
+		g_turnState = 0;
+		g_curSeq = crouched ? seq_cidle : seq_idle;
+		g_phase = 0.0f;
+		seq = g_curSeq;
+		sd = (mstudioseqdesc_t *)((byte *)hdr + hdr->seqindex) + seq;
+	}
 	if (sd->flags & STUDIO_LOOPING)
 	{
 		g_phase -= floorf(g_phase);
@@ -748,6 +795,8 @@ extern "C" int W_HUD_Init(void)
 	fp_arms         = FpRegister("cl_fpbody_arms", "0", FCVAR_ARCHIVE);
 	fp_model        = FpRegister("cl_fpbody_simon", DefaultBodyModel(), FCVAR_ARCHIVE);
 	fp_debug        = FpRegister("cl_fpbody_debug", "0", 0);
+	fp_turn         = FpRegister("cl_fpbody_turn", "1", FCVAR_ARCHIVE);
+	fp_turnangle    = FpRegister("cl_fpbody_turnangle", "55", FCVAR_ARCHIVE);
 	FpCam_Init();
 	FpPost_Init();
 	FpLight_Init();

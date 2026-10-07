@@ -24,6 +24,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <vector>
+#include <string>
 #include <math.h>
 #include <GL/gl.h>
 
@@ -141,7 +142,7 @@ static bool ReadFile(const char *rel, std::vector<byte> &out)
 {
 	char dir[MAX_PATH], path[MAX_PATH];
 	FpGameDir(dir, sizeof(dir));
-	_snprintf(path, sizeof(path), "%s%s", dir, rel);
+	_snprintf(path, sizeof(path), "%s%s", rel[0] && rel[1] == ':' ? "" : dir, rel);   // or a full path
 	FILE *f = fopen(path, "rb");
 	if (!f)
 		return false;
@@ -318,60 +319,87 @@ void FpClothes_NewMap(void)
 }
 
 // ---------------------------------------------------------------------------
-// 3D preview: Simon (models/cutscene/player.mdl) playing his idle animation,
-// turning slowly, wearing the costume under the cursor. Drawn by the mod with
-// OpenGL inside the menu panel: the game itself can only show the costume
-// that's actually worn.
+// 3D previews, drawn by the mod with OpenGL inside the menu panel:
+//   Clothes: Simon (models/cutscene/player.mdl) wearing the costume under the
+//            cursor (the game itself can only show the costume that's worn).
+//   Player:  the character under the cursor (FpPreview_Draw3D).
+// The model plays its idle animation (or stands in its rest pose) and turns slowly.
 // ---------------------------------------------------------------------------
 
 static const char *kSimonModel = "models/cutscene/player.mdl";
 
-struct Simon
+struct Preview
 {
-	std::vector<byte> data;
-	studiohdr_t *hdr = NULL;
-	mstudiomodel_t *model = NULL;
-	int idleSeq = 0;
+	std::string path;
+	std::vector<byte> data, tdata;    // the model; its xxxT.mdl when the textures are kept apart
+	studiohdr_t *hdr = NULL, *thdr = NULL;
+	std::vector<mstudiomodel_t *> models;   // first submodel of every body part
+	int idleSeq = -1;                 // -1: rest pose
 	std::vector<GLuint> tex;          // per texture of the model
 	std::vector<int> part;            // per texture: costume part it shows (-1 none)
 	std::vector<bool> masked;
 	float bmin[3], bmax[3];
 	bool tried = false, ok = false;
+	const byte *T(void) const { return (const byte *)thdr; }
 };
-static Simon s_simon;
+static Preview s_simon, s_char;
+
+static void FreePreview(Preview &S)
+{
+	for (GLuint t : S.tex)
+		if (t) glDeleteTextures(1, &t);
+	S = Preview();
+}
 
 static void Free3D(void)
 {
-	for (GLuint t : s_simon.tex)
-		if (t) glDeleteTextures(1, &t);
-	s_simon = Simon();
+	FreePreview(s_simon);
+	FreePreview(s_char);
 }
 
-static bool Load3D(void)
+static bool LoadPreview(Preview &S, const char *path, bool costumes)
 {
-	Simon &S = s_simon;
 	if (S.tried)
 		return S.ok;
 	S.tried = true;
-	if (!ReadFile(kSimonModel, S.data) || S.data.size() < sizeof(studiohdr_t))
+	S.path = path;
+	if (!ReadFile(path, S.data) || S.data.size() < sizeof(studiohdr_t))
 		return false;
 	S.hdr = (studiohdr_t *)S.data.data();
 	studiohdr_t *h = S.hdr;
-	mstudioseqgroup_t *grp = (mstudioseqgroup_t *)(S.data.data() + h->seqgroupindex);
-	if (memcmp(&h->id, "IDST", 4) || h->version != 10 || h->numbodyparts < 1 || grp->unused2 != 0)
+	if (memcmp(&h->id, "IDST", 4) || h->version != 10 || h->numbodyparts < 1)
 		return false;
+	S.thdr = h;
+	if (h->numtextures <= 0)
+	{
+		std::string tp = S.path.substr(0, S.path.size() - 4) + "t.mdl";
+		if (!ReadFile(tp.c_str(), S.tdata) || S.tdata.size() < sizeof(studiohdr_t) || memcmp(S.tdata.data(), "IDST", 4))
+			return false;
+		S.thdr = (studiohdr_t *)S.tdata.data();
+	}
+	const studiohdr_t *th = S.thdr;
 	mstudiobodyparts_t *bp = (mstudiobodyparts_t *)(S.data.data() + h->bodypartindex);
-	S.model = (mstudiomodel_t *)(S.data.data() + bp[0].modelindex);
+	for (int p = 0; p < h->numbodyparts; p++)
+		if (bp[p].nummodels > 0)
+			S.models.push_back((mstudiomodel_t *)(S.data.data() + bp[p].modelindex));
 
+	// An idle whose frames are in this file (not in xxx01.mdl), else the first sequence, else none.
+	mstudioseqgroup_t *grp = (mstudioseqgroup_t *)(S.data.data() + h->seqgroupindex);
 	mstudioseqdesc_t *seqs = (mstudioseqdesc_t *)(S.data.data() + h->seqindex);
-	for (int i = 0; i < h->numseq; i++)
-		if (strstr(seqs[i].label, "idle")) { S.idleSeq = i; break; }
+	if (h->numseqgroups > 0 && grp->unused2 == 0)
+	{
+		for (int i = 0; i < h->numseq && S.idleSeq < 0; i++)
+			if (!seqs[i].seqgroup && (strstr(seqs[i].label, "idle") || strstr(seqs[i].label, "Idle")))
+				S.idleSeq = i;
+		if (S.idleSeq < 0 && h->numseq > 0 && !seqs[0].seqgroup)
+			S.idleSeq = 0;
+	}
 
-	mstudiotexture_t *tx = (mstudiotexture_t *)(S.data.data() + h->textureindex);
-	for (int i = 0; i < h->numtextures; i++)
+	const mstudiotexture_t *tx = (const mstudiotexture_t *)(S.T() + th->textureindex);
+	for (int i = 0; i < th->numtextures; i++)
 	{
 		int w = tx[i].width, hh = tx[i].height;
-		const byte *pix = S.data.data() + tx[i].index, *pal = pix + w * hh;
+		const byte *pix = S.T() + tx[i].index, *pal = pix + w * hh;
 		bool masked = (tx[i].flags & 0x40) != 0;               // STUDIO_NF_MASKED: index 255 is see-through
 		std::vector<byte> rgba((size_t)w * hh * 4);
 		for (int k = 0; k < w * hh; k++)
@@ -383,11 +411,11 @@ static bool Load3D(void)
 		S.tex.push_back(Upload(rgba.data(), w, hh));
 		S.masked.push_back(masked);
 		const char *n = tx[i].name;
-		S.part.push_back(strstr(n, "hoodie") ? 0 : strstr(n, "jeans") ? 1 : strstr(n, "face") ? 3 : -1);
+		S.part.push_back(!costumes ? -1 : strstr(n, "hoodie") ? 0 : strstr(n, "jeans") ? 1 : strstr(n, "face") ? 3 : -1);
 	}
 	for (int k = 0; k < 3; k++) { S.bmin[k] = 1e9f; S.bmax[k] = -1e9f; }
-	S.ok = true;
-	return true;
+	S.ok = !S.models.empty();
+	return S.ok;
 }
 
 static void AngleQuat(const float *a, float *q)
@@ -434,22 +462,21 @@ static short AnimVal(const mstudioanim_t *anim, int ch, int frame)
 	return p->num.valid > k ? p[k + 1].value : p[p->num.valid].value;
 }
 
-// Bone transforms of the idle animation at time t.
-static void Pose(float t, std::vector<float> &bones)
+// Bone transforms of the idle animation (or the rest pose) at time t.
+static void Pose(const Preview &S, float t, std::vector<float> &bones)
 {
-	Simon &S = s_simon;
-	studiohdr_t *h = S.hdr;
-	mstudiobone_t *b = (mstudiobone_t *)(S.data.data() + h->boneindex);
-	mstudioseqdesc_t *sd = (mstudioseqdesc_t *)(S.data.data() + h->seqindex) + S.idleSeq;
-	mstudioanim_t *anim = (mstudioanim_t *)(S.data.data() + sd->animindex);
-	int frames = sd->numframes > 1 ? sd->numframes : 1;
-	int frame = (int)(t * (sd->fps > 0 ? sd->fps : 10.0f)) % frames;
+	const studiohdr_t *h = S.hdr;
+	const mstudiobone_t *b = (const mstudiobone_t *)(S.data.data() + h->boneindex);
+	const mstudioseqdesc_t *sd = S.idleSeq >= 0 ? (const mstudioseqdesc_t *)(S.data.data() + h->seqindex) + S.idleSeq : NULL;
+	const mstudioanim_t *anim = sd ? (const mstudioanim_t *)(S.data.data() + sd->animindex) : NULL;
+	int frames = sd && sd->numframes > 1 ? sd->numframes : 1;
+	int frame = sd ? (int)(t * (sd->fps > 0 ? sd->fps : 10.0f)) % frames : 0;
 	bones.resize((size_t)h->numbones * 12);
 	for (int i = 0; i < h->numbones; i++)
 	{
 		float v[6];
 		for (int c = 0; c < 6; c++)
-			v[c] = b[i].value[c] + AnimVal(&anim[i], c, frame) * b[i].scale[c];
+			v[c] = b[i].value[c] + (anim ? AnimVal(&anim[i], c, frame) * b[i].scale[c] : 0.0f);
 		float q[4], local[3][4];
 		AngleQuat(v + 3, q);
 		QuatMatrix(q, v, local);
@@ -461,51 +488,61 @@ static void Pose(float t, std::vector<float> &bones)
 	}
 }
 
-// Draws Simon in the costume into the screen rectangle (x, y, w, h), menu pixels.
-void FpClothes_Draw3D(int costume, int x, int y, int w, int h, int screenW, int screenH, float time)
+// Draws the model (Simon in costume `costume`, or -1: as it is) into the screen
+// rectangle (x, y, w, h), menu pixels.
+static void DrawPreview(Preview &S, int costume, int x, int y, int w, int h, int screenW, int screenH, float time)
 {
-	if (!Load3D() || w < 32 || h < 32)
+	if (w < 32 || h < 32)
 		return;
-	Simon &S = s_simon;
-	mstudiomodel_t *m = S.model;
 	std::vector<float> bones;
-	Pose(time, bones);
+	Pose(S, time, bones);
 
 	// Skin: every vertex and normal follows its one bone.
-	const byte *vbone = S.data.data() + m->vertinfoindex, *nbone = S.data.data() + m->norminfoindex;
-	const vec3_t *verts = (const vec3_t *)(S.data.data() + m->vertindex);
-	const vec3_t *norms = (const vec3_t *)(S.data.data() + m->normindex);
-	std::vector<float> pv((size_t)m->numverts * 3), pn((size_t)m->numnorms * 3);
 	float yaw = time * 0.6f, cy = cosf(yaw), sy = sinf(yaw);
 	float lo[3] = { 1e9f, 1e9f, 1e9f }, hi[3] = { -1e9f, -1e9f, -1e9f };
-	for (int i = 0; i < m->numverts; i++)
+	std::vector<std::vector<float>> PV(S.models.size()), PN(S.models.size());
+	for (size_t mi = 0; mi < S.models.size(); mi++)
 	{
-		const float (*b)[4] = (const float (*)[4])&bones[(size_t)vbone[i] * 12];
-		const float *p = verts[i];
-		float wx = b[0][0] * p[0] + b[0][1] * p[1] + b[0][2] * p[2] + b[0][3];
-		float wy = b[1][0] * p[0] + b[1][1] * p[1] + b[1][2] * p[2] + b[1][3];
-		float wz = b[2][0] * p[0] + b[2][1] * p[1] + b[2][2] * p[2] + b[2][3];
-		// turn around the vertical axis, then to eye space: x = model left, y = up, z = toward the camera
-		float rx = wx * cy - wy * sy, ry = wx * sy + wy * cy;
-		pv[i * 3] = ry; pv[i * 3 + 1] = wz; pv[i * 3 + 2] = rx;
-		for (int k = 0; k < 3; k++) { lo[k] = fminf(lo[k], pv[i * 3 + k]); hi[k] = fmaxf(hi[k], pv[i * 3 + k]); }
+		const mstudiomodel_t *m = S.models[mi];
+		const byte *vbone = S.data.data() + m->vertinfoindex, *nbone = S.data.data() + m->norminfoindex;
+		const vec3_t *verts = (const vec3_t *)(S.data.data() + m->vertindex);
+		const vec3_t *norms = (const vec3_t *)(S.data.data() + m->normindex);
+		std::vector<float> &pv = PV[mi], &pn = PN[mi];
+		pv.resize((size_t)m->numverts * 3);
+		pn.resize((size_t)m->numnorms * 3);
+		for (int i = 0; i < m->numverts; i++)
+		{
+			const float (*b)[4] = (const float (*)[4])&bones[(size_t)vbone[i] * 12];
+			const float *p = verts[i];
+			float wx = b[0][0] * p[0] + b[0][1] * p[1] + b[0][2] * p[2] + b[0][3];
+			float wy = b[1][0] * p[0] + b[1][1] * p[1] + b[1][2] * p[2] + b[1][3];
+			float wz = b[2][0] * p[0] + b[2][1] * p[1] + b[2][2] * p[2] + b[2][3];
+			// turn around the vertical axis, then to eye space: x = model left, y = up, z = toward the camera
+			float rx = wx * cy - wy * sy, ry = wx * sy + wy * cy;
+			pv[i * 3] = ry; pv[i * 3 + 1] = wz; pv[i * 3 + 2] = rx;
+			for (int k = 0; k < 3; k++) { lo[k] = fminf(lo[k], pv[i * 3 + k]); hi[k] = fmaxf(hi[k], pv[i * 3 + k]); }
+		}
+		for (int i = 0; i < m->numnorms; i++)
+		{
+			const float (*b)[4] = (const float (*)[4])&bones[(size_t)nbone[i] * 12];
+			const float *n = norms[i];
+			float wx = b[0][0] * n[0] + b[0][1] * n[1] + b[0][2] * n[2];
+			float wy = b[1][0] * n[0] + b[1][1] * n[1] + b[1][2] * n[2];
+			float wz = b[2][0] * n[0] + b[2][1] * n[1] + b[2][2] * n[2];
+			float rx = wx * cy - wy * sy, ry = wx * sy + wy * cy;
+			pn[i * 3] = ry; pn[i * 3 + 1] = wz; pn[i * 3 + 2] = rx;
+		}
 	}
-	for (int i = 0; i < m->numnorms; i++)
-	{
-		const float (*b)[4] = (const float (*)[4])&bones[(size_t)nbone[i] * 12];
-		const float *n = norms[i];
-		float wx = b[0][0] * n[0] + b[0][1] * n[1] + b[0][2] * n[2];
-		float wy = b[1][0] * n[0] + b[1][1] * n[1] + b[1][2] * n[2];
-		float wz = b[2][0] * n[0] + b[2][1] * n[1] + b[2][2] * n[2];
-		float rx = wx * cy - wy * sy, ry = wx * sy + wy * cy;
-		pn[i * 3] = ry; pn[i * 3 + 1] = wz; pn[i * 3 + 2] = rx;
-	}
-	// Fit the standing model in the box (a stable height so turning doesn't zoom).
+	if (lo[1] > hi[1])
+		return;
+	// Fit the standing model in the box (a stable size so turning doesn't zoom).
 	if (S.bmin[0] > S.bmax[0])
 		for (int k = 0; k < 3; k++) { S.bmin[k] = lo[k]; S.bmax[k] = hi[k]; }
 	float height = S.bmax[1] - S.bmin[1], centreY = (S.bmax[1] + S.bmin[1]) * 0.5f;
+	float depth = fmaxf(S.bmax[0] - S.bmin[0], S.bmax[2] - S.bmin[2]);
 	float aspect = (float)w / h, fovTan = 0.42f;
-	float dist = height * 0.56f / fovTan;            // the model fills about 90% of the height
+	float fit = fmaxf(height, depth / aspect);           // wide models (a crawler) fit by width
+	float dist = fit * 0.56f / fovTan + depth * 0.5f;     // the model fills about 90% of the box
 
 	// The menu works in its own pixel size; GL wants window pixels, bottom-up.
 	GLint vp[4];
@@ -521,7 +558,7 @@ void FpClothes_Draw3D(int costume, int x, int y, int w, int h, int screenW, int 
 		FpGL_ActiveTexture(0);
 	}
 	glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity();
-	float n = 4.0f, f = dist + 200.0f;
+	float n = 4.0f, f = dist + depth + 200.0f;
 	glFrustum(-fovTan * aspect * n, fovTan * aspect * n, -fovTan * n, fovTan * n, n, f);
 	glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
 	glTranslatef(0, -centreY, -dist);
@@ -555,40 +592,46 @@ void FpClothes_Draw3D(int costume, int x, int y, int w, int h, int screenW, int 
 	glAlphaFunc(GL_GREATER, 0.5f);
 
 	const float L[3] = { 0.45f, 0.55f, 0.70f };              // light from the upper front
-	mstudiotexture_t *tx = (mstudiotexture_t *)(S.data.data() + S.hdr->textureindex);
-	const short *skins = (const short *)(S.data.data() + S.hdr->skinindex);
-	mstudiomesh_t *meshes = (mstudiomesh_t *)(S.data.data() + m->meshindex);
-	for (int k = 0; k < m->nummesh; k++)
+	const mstudiotexture_t *tx = (const mstudiotexture_t *)(S.T() + S.thdr->textureindex);
+	const short *skins = (const short *)(S.T() + S.thdr->skinindex);
+	for (size_t mi = 0; mi < S.models.size(); mi++)
 	{
-		int ti = skins[meshes[k].skinref];
-		if (ti < 0 || ti >= (int)S.tex.size())
-			continue;
-		GLuint tex = S.tex[ti];
-		if (S.part[ti] >= 0)
+		const mstudiomodel_t *m = S.models[mi];
+		const std::vector<float> &pv = PV[mi], &pn = PN[mi];
+		const mstudiomesh_t *meshes = (const mstudiomesh_t *)(S.data.data() + m->meshindex);
+		for (int k = 0; k < m->nummesh; k++)
 		{
-			unsigned id; int tw, th; bool own;
-			if (FpClothes_Part(costume, S.part[ti], &id, &tw, &th, &own) && own)
-				tex = id;                                     // the costume's own texture
-		}
-		glBindTexture(GL_TEXTURE_2D, tex);
-		if (S.masked[ti]) glEnable(GL_ALPHA_TEST); else glDisable(GL_ALPHA_TEST);
-		float iw = 1.0f / tx[ti].width, ih = 1.0f / tx[ti].height;
-		const short *cmd = (const short *)(S.data.data() + meshes[k].triindex);
-		int count;
-		while ((count = *cmd++) != 0)
-		{
-			glBegin(count < 0 ? GL_TRIANGLE_FAN : GL_TRIANGLE_STRIP);
-			for (int c = count < 0 ? -count : count; c > 0; c--, cmd += 4)
+			int sr = meshes[k].skinref;
+			int ti = sr >= 0 && sr < S.thdr->numskinref ? skins[sr] : -1;
+			if (ti < 0 || ti >= (int)S.tex.size())
+				continue;
+			GLuint tex = S.tex[ti];
+			if (costume >= 0 && S.part[ti] >= 0)
 			{
-				const float *nn = &pn[(size_t)cmd[1] * 3];
-				float lit = 0.5f + 0.75f * fmaxf(0.0f, nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2]);
-				if (lit > 1.0f) lit = 1.0f;
-				glColor4f(lit, lit, lit, 1.0f);
-				glTexCoord2f(cmd[2] * iw, cmd[3] * ih);
-				const float *p = &pv[(size_t)cmd[0] * 3];
-				glVertex3f(p[0], p[1], p[2]);
+				unsigned id; int tw, th; bool own;
+				if (FpClothes_Part(costume, S.part[ti], &id, &tw, &th, &own) && own)
+					tex = id;                                     // the costume's own texture
 			}
-			glEnd();
+			glBindTexture(GL_TEXTURE_2D, tex);
+			if (S.masked[ti]) glEnable(GL_ALPHA_TEST); else glDisable(GL_ALPHA_TEST);
+			float iw = 1.0f / tx[ti].width, ih = 1.0f / tx[ti].height;
+			const short *cmd = (const short *)(S.data.data() + meshes[k].triindex);
+			int count;
+			while ((count = *cmd++) != 0)
+			{
+				glBegin(count < 0 ? GL_TRIANGLE_FAN : GL_TRIANGLE_STRIP);
+				for (int c = count < 0 ? -count : count; c > 0; c--, cmd += 4)
+				{
+					const float *nn = &pn[(size_t)cmd[1] * 3];
+					float lit = 0.5f + 0.75f * fmaxf(0.0f, nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2]);
+					if (lit > 1.0f) lit = 1.0f;
+					glColor4f(lit, lit, lit, 1.0f);
+					glTexCoord2f(cmd[2] * iw, cmd[3] * ih);
+					const float *p = &pv[(size_t)cmd[0] * 3];
+					glVertex3f(p[0], p[1], p[2]);
+				}
+				glEnd();
+			}
 		}
 	}
 
@@ -597,4 +640,22 @@ void FpClothes_Draw3D(int costume, int x, int y, int w, int h, int screenW, int 
 	glMatrixMode(GL_MODELVIEW); glPopMatrix();
 	glViewport(vp[0], vp[1], vp[2], vp[3]);
 	glPopAttrib();
+}
+
+// Clothes tab: Simon in the costume.
+void FpClothes_Draw3D(int costume, int x, int y, int w, int h, int screenW, int screenH, float time)
+{
+	if (LoadPreview(s_simon, kSimonModel, true))
+		DrawPreview(s_simon, costume, x, y, w, h, screenW, screenH, time);
+}
+
+// Player tab: a character model (game-relative or full path). False if it can't be shown.
+bool FpPreview_Draw3D(const char *path, int x, int y, int w, int h, int screenW, int screenH, float time)
+{
+	if (_stricmp(s_char.path.c_str(), path))
+		FreePreview(s_char);
+	if (!LoadPreview(s_char, path, false))
+		return false;
+	DrawPreview(s_char, -1, x, y, w, h, screenW, screenH, time);
+	return true;
 }
