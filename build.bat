@@ -18,7 +18,7 @@ if not exist build\server mkdir build\server
 rem --- client.dll: body, camera, graphics, menu
 cl /nologo /O2 /MT /LD /EHsc /permissive /W3 /wd4996 /wd4244 /wd4305 ^
   /I"%SDK%\common" /I"%SDK%\engine" /I"%SDK%\public" /I"%SDK%\pm_shared" /I"%SDK%\cl_dll" ^
-  src\fpbody.cpp src\fpcam.cpp src\fppost.cpp src\fplight.cpp src\fpmenu.cpp src\fpfists.cpp src\fpclothes.cpp src\fpmaps.cpp src\fpchars.cpp src\fphands.cpp src\fpprops.cpp src\fpglload.cpp src\fpcrash.cpp /Fobuild\ /Febuild\client.dll /link /DEF:src\client.def user32.lib opengl32.lib psapi.lib advapi32.lib delayimp.lib /DELAYLOAD:opengl32.dll || exit /b 1
+  src\fpbody.cpp src\fpcam.cpp src\fppost.cpp src\fplight.cpp src\fpmenu.cpp src\fpfists.cpp src\fpclothes.cpp src\fpmaps.cpp src\fpchars.cpp src\fpprops.cpp src\fpglload.cpp src\fpcrash.cpp /Fobuild\ /Febuild\client.dll /link /DEF:src\client.def user32.lib opengl32.lib psapi.lib advapi32.lib delayimp.lib /DELAYLOAD:opengl32.dll || exit /b 1
 
 rem --- hl.dll: server wrapper (fp_give, fp_spawn, cheats)
 cl /nologo /O2 /MT /LD /EHa /permissive /W3 /wd4996 /wd4244 /wd4305 ^

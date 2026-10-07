@@ -185,7 +185,6 @@ static const Item kHands[] = {
 	S("Breathing", "cl_fpvm_breath", "0 1 2", "Off|Normal|Strong"),
 	S("Sprint / jump / fire movement", "cl_fpvm_action", "0 1", "Off|On"),
 	S("Fists mode (nightstick becomes fists, both buttons punch)", "cl_fists", "0 1", "Off|On"),
-	S("Hands (on every weapon)", "cl_fphands", "0 1 2", "Simon|Doctor|Sick Simon"),
 };
 static const Item kBody[] = {
 	S("Body and legs", "cl_fpbody", "0 1", "Off|On"),
@@ -357,7 +356,6 @@ static const Page *BuildPlayer(void)
 	if (s_charTab >= MapTabs()) s_charTab = 0;
 	s_charItems.clear();
 	s_charItems.push_back({ SETTING, "Body animations", "cl_fpbody_anims", "0 1", "Simon's|Their own (if they have them)" });
-	s_charItems.push_back({ SETTING, "Hands (on every weapon)", "cl_fphands", "0 1 2", "Simon|Doctor|Sick Simon" });
 	s_charItems.push_back({ ACTION, "Simon (normal)", "fpchar:simon", NULL, NULL });
 	for (int i = 0; i < FpChars_Count(s_charTab); i++)
 	{
